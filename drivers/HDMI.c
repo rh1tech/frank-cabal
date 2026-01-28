@@ -10,6 +10,7 @@
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
 #include "hardware/irq.h"
+#include "hardware/sync.h"
 
 // Globals expected by the driver
 int graphics_buffer_width = 320;
@@ -251,7 +252,16 @@ static void dma_handler_HDMI() {
         int y = line >> 1;
         //область изображения
         uint8_t* input_buffer = get_line_buffer(y);
-        if (!input_buffer) return;
+        // CRITICAL: Must ALWAYS generate sync pulses even if no framebuffer
+        // Otherwise display will lose sync completely
+        if (!input_buffer) {
+            // No framebuffer - fill with black but still generate sync
+            memset(output_buffer, 0, SCREEN_WIDTH);
+            memset(activ_buf + 48, BASE_HDMI_CTRL_INX, 24);
+            memset(activ_buf, BASE_HDMI_CTRL_INX + 1, 48);
+            memset(activ_buf + 392, BASE_HDMI_CTRL_INX, 8);
+            return;
+        }
         switch (hdmi_graphics_mode) {
             case GRAPHICSMODE_DEFAULT:
                 //заполняем пространство сверху и снизу графического буфера
@@ -437,13 +447,13 @@ static inline bool hdmi_init() {
     sm_config_set_in_shift(&c_c, true, false, 32);
 
     pio_sm_init(PIO_VIDEO_ADDR, SM_conv, offs_prg1, &c_c);
-    pio_sm_set_enabled(PIO_VIDEO_ADDR, SM_conv, true);
+    // Don't enable SM_conv yet - wait until all GPIOs are configured
 
     //настройка PIO SM для вывода данных
     c_c = pio_get_default_sm_config();
     sm_config_set_wrap(&c_c, offs_prg0, offs_prg0 + (program_PIO_HDMI.length - 1));
 
-    //настройка side set
+    //настройка side set - configure ALL GPIOs BEFORE enabling state machines
     sm_config_set_sideset_pins(&c_c,beginHDMI_PIN_clk);
     sm_config_set_sideset(&c_c, 2,false,false);
     for (int i = 0; i < 2; i++) {
@@ -484,6 +494,16 @@ static inline bool hdmi_init() {
     int hdmi_hz = graphics_get_video_mode(get_video_mode()).freq;
     sm_config_set_clkdiv(&c_c, (clock_get_hz(clk_sys) / 252000000.0f) * (60 / hdmi_hz));
     pio_sm_init(PIO_VIDEO, SM_video, offs_prg0, &c_c);
+
+    // Clear FIFOs before enabling to ensure clean startup
+    pio_sm_clear_fifos(PIO_VIDEO_ADDR, SM_conv);
+    pio_sm_clear_fifos(PIO_VIDEO, SM_video);
+
+    // Small delay for GPIO pins to settle
+    sleep_us(100);
+
+    // Now enable both state machines together after all configuration is complete
+    pio_sm_set_enabled(PIO_VIDEO_ADDR, SM_conv, true);
     pio_sm_set_enabled(PIO_VIDEO, SM_video, true);
 
     //настройки DMA
@@ -593,6 +613,10 @@ static inline bool hdmi_init() {
 
     dma_start_channel_mask((1u << dma_chan_ctrl));
 
+    // Allow display to lock onto the HDMI signal
+    // This helps prevent startup artifacts on some displays
+    sleep_ms(50);
+
     return true;
 };
 
@@ -633,8 +657,18 @@ void graphics_set_palette_hdmi(uint8_t i, uint32_t color888) {
     const uint8_t R = (color888 >> 16) & 0xff;
     const uint8_t G = (color888 >> 8) & 0xff;
     const uint8_t B = (color888 >> 0) & 0xff;
-    conv_color64[i * 2] = get_ser_diff_data(tmds_encoder(R), tmds_encoder(G), tmds_encoder(B));
-    conv_color64[i * 2 + 1] = conv_color64[i * 2] ^ 0x0003ffffffffffffl;
+
+    // Pre-compute TMDS data before disabling interrupts
+    uint64_t tmds_data = get_ser_diff_data(tmds_encoder(R), tmds_encoder(G), tmds_encoder(B));
+    uint64_t tmds_data_inv = tmds_data ^ 0x0003ffffffffffffl;
+
+    // Disable interrupts during 64-bit writes to prevent DMA from reading
+    // partially written data (64-bit writes are not atomic on 32-bit ARM)
+    uint32_t irq_state = save_and_disable_interrupts();
+    conv_color64[i * 2] = tmds_data;
+    conv_color64[i * 2 + 1] = tmds_data_inv;
+    __dmb();  // Memory barrier to ensure writes complete
+    restore_interrupts(irq_state);
 };
 
 #define RGB888(r, g, b) ((r<<16) | (g << 8 ) | b )
@@ -665,17 +699,24 @@ void graphics_restore_sync_colors(void) {
     const uint16_t b3 = 0b1010101011;
     const int base_inx = BASE_HDMI_CTRL_INX;
 
-    conv_color64[2 * base_inx + 0] = get_ser_diff_data(b0, b0, b3);
-    conv_color64[2 * base_inx + 1] = get_ser_diff_data(b0, b0, b3);
+    // Pre-compute all TMDS data
+    uint64_t sync0 = get_ser_diff_data(b0, b0, b3);
+    uint64_t sync1 = get_ser_diff_data(b0, b0, b2);
+    uint64_t sync2 = get_ser_diff_data(b0, b0, b1);
+    uint64_t sync3 = get_ser_diff_data(b0, b0, b0);
 
-    conv_color64[2 * (base_inx + 1) + 0] = get_ser_diff_data(b0, b0, b2);
-    conv_color64[2 * (base_inx + 1) + 1] = get_ser_diff_data(b0, b0, b2);
-
-    conv_color64[2 * (base_inx + 2) + 0] = get_ser_diff_data(b0, b0, b1);
-    conv_color64[2 * (base_inx + 2) + 1] = get_ser_diff_data(b0, b0, b1);
-
-    conv_color64[2 * (base_inx + 3) + 0] = get_ser_diff_data(b0, b0, b0);
-    conv_color64[2 * (base_inx + 3) + 1] = get_ser_diff_data(b0, b0, b0);
+    // Disable interrupts for atomic writes
+    uint32_t irq_state = save_and_disable_interrupts();
+    conv_color64[2 * base_inx + 0] = sync0;
+    conv_color64[2 * base_inx + 1] = sync0;
+    conv_color64[2 * (base_inx + 1) + 0] = sync1;
+    conv_color64[2 * (base_inx + 1) + 1] = sync1;
+    conv_color64[2 * (base_inx + 2) + 0] = sync2;
+    conv_color64[2 * (base_inx + 2) + 1] = sync2;
+    conv_color64[2 * (base_inx + 3) + 0] = sync3;
+    conv_color64[2 * (base_inx + 3) + 1] = sync3;
+    __dmb();
+    restore_interrupts(irq_state);
 }
 
 // Wrappers for existing API
