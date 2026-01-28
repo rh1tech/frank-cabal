@@ -145,7 +145,8 @@ public:
 		LINK_PLUGIN(TIMIDITY)
 		#endif
 		#else
-		// Embedded build: only basic audio support
+		// Embedded build: AdLib + basic audio support
+		LINK_PLUGIN(ADLIB)
 		LINK_PLUGIN(PCSPK)
 		LINK_PLUGIN(PCJR)
 		#endif

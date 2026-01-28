@@ -71,6 +71,8 @@ void Util::notifyPaused(uint32 duration) {
 }
 
 void Util::delay(uint16 msecs) {
+	// Process audio during delays to prevent underruns
+	g_system->updateScreen();
 	g_system->delayMillis(msecs / _vm->_global->_speedFactor);
 }
 

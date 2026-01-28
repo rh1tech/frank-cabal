@@ -40,8 +40,9 @@ void cabal_audio_set_mixer_callback(void (*callback)(uint8_t *stream, int len)) 
 // Fixed DMA channels for audio (keep away from HDMI DMA channels)
 #define AUDIO_DMA_CH_A 10
 #define AUDIO_DMA_CH_B 11
+#define AUDIO_DMA_CH_C 12
 
-#define DMA_BUFFER_COUNT 2
+#define DMA_BUFFER_COUNT 3
 #define DMA_BUFFER_MAX_SAMPLES AUDIO_BUFFER_SAMPLES
 
 static uint32_t __attribute__((aligned(4))) dma_buffers[DMA_BUFFER_COUNT][DMA_BUFFER_MAX_SAMPLES];
@@ -49,12 +50,13 @@ static uint32_t __attribute__((aligned(4))) dma_buffers[DMA_BUFFER_COUNT][DMA_BU
 // Bitmask of buffers the CPU is allowed to write (1 = free)
 static volatile uint32_t dma_buffers_free_mask = 0;
 
-// Pre-roll: fill both buffers before starting playback
-#define PREROLL_BUFFERS 2
+// Pre-roll: fill all three buffers before starting playback
+#define PREROLL_BUFFERS 3
 static volatile int preroll_count = 0;
 
 static int dma_channel_a = -1;
 static int dma_channel_b = -1;
+static int dma_channel_c = -1;
 static PIO audio_pio;
 static uint audio_sm;
 static uint32_t dma_transfer_count;
@@ -154,23 +156,27 @@ void i2s_init(i2s_config_t *config) {
     memset(dma_buffers, 0, sizeof(dma_buffers));
     config->dma_buf = (uint16_t *)(void *)dma_buffers[0];
 
-    // Use fixed DMA channels for audio
+    // Use fixed DMA channels for audio (triple buffer)
     dma_channel_abort(AUDIO_DMA_CH_A);
     dma_channel_abort(AUDIO_DMA_CH_B);
-    while (dma_channel_is_busy(AUDIO_DMA_CH_A) || dma_channel_is_busy(AUDIO_DMA_CH_B)) {
+    dma_channel_abort(AUDIO_DMA_CH_C);
+    while (dma_channel_is_busy(AUDIO_DMA_CH_A) || dma_channel_is_busy(AUDIO_DMA_CH_B) || dma_channel_is_busy(AUDIO_DMA_CH_C)) {
         tight_loop_contents();
     }
 
     dma_channel_unclaim(AUDIO_DMA_CH_A);
     dma_channel_unclaim(AUDIO_DMA_CH_B);
+    dma_channel_unclaim(AUDIO_DMA_CH_C);
     dma_channel_claim(AUDIO_DMA_CH_A);
     dma_channel_claim(AUDIO_DMA_CH_B);
+    dma_channel_claim(AUDIO_DMA_CH_C);
     dma_channel_a = AUDIO_DMA_CH_A;
     dma_channel_b = AUDIO_DMA_CH_B;
+    dma_channel_c = AUDIO_DMA_CH_C;
     config->dma_channel = (uint8_t)dma_channel_a;
-    printf("Audio: Using DMA channels %d/%d (IRQ=%d)\n", dma_channel_a, dma_channel_b, AUDIO_DMA_IRQ);
+    printf("Audio: Using DMA channels %d/%d/%d (IRQ=%d)\n", dma_channel_a, dma_channel_b, dma_channel_c, AUDIO_DMA_IRQ);
 
-    // Configure DMA channels in ping-pong chain
+    // Configure DMA channels in triple-buffer chain: A→B→C→A
     dma_channel_config cfg_a = dma_channel_get_default_config(dma_channel_a);
     channel_config_set_read_increment(&cfg_a, true);
     channel_config_set_write_increment(&cfg_a, false);
@@ -183,7 +189,14 @@ void i2s_init(i2s_config_t *config) {
     channel_config_set_write_increment(&cfg_b, false);
     channel_config_set_transfer_data_size(&cfg_b, DMA_SIZE_32);
     channel_config_set_dreq(&cfg_b, pio_get_dreq(audio_pio, audio_sm, true));
-    channel_config_set_chain_to(&cfg_b, dma_channel_a);
+    channel_config_set_chain_to(&cfg_b, dma_channel_c);
+
+    dma_channel_config cfg_c = dma_channel_get_default_config(dma_channel_c);
+    channel_config_set_read_increment(&cfg_c, true);
+    channel_config_set_write_increment(&cfg_c, false);
+    channel_config_set_transfer_data_size(&cfg_c, DMA_SIZE_32);
+    channel_config_set_dreq(&cfg_c, pio_get_dreq(audio_pio, audio_sm, true));
+    channel_config_set_chain_to(&cfg_c, dma_channel_a);
 
     dma_channel_configure(
         dma_channel_a,
@@ -203,15 +216,25 @@ void i2s_init(i2s_config_t *config) {
         false
     );
 
+    dma_channel_configure(
+        dma_channel_c,
+        &cfg_c,
+        &audio_pio->txf[audio_sm],
+        dma_buffers[2],
+        dma_transfer_count,
+        false
+    );
+
     // Set up DMA IRQ1 handler
     irq_set_exclusive_handler(AUDIO_DMA_IRQ, audio_dma_irq_handler);
     irq_set_priority(AUDIO_DMA_IRQ, 0x80);
     irq_set_enabled(AUDIO_DMA_IRQ, true);
 
-    // Enable IRQ1 for both channels
-    dma_hw->ints1 = (1u << dma_channel_a) | (1u << dma_channel_b);
+    // Enable IRQ1 for all three channels
+    dma_hw->ints1 = (1u << dma_channel_a) | (1u << dma_channel_b) | (1u << dma_channel_c);
     dma_channel_set_irq1_enabled(dma_channel_a, true);
     dma_channel_set_irq1_enabled(dma_channel_b, true);
+    dma_channel_set_irq1_enabled(dma_channel_c, true);
 
     // DON'T enable PIO state machine yet - enable when DMA starts
     // This avoids any interference with HDMI during boot
@@ -219,10 +242,10 @@ void i2s_init(i2s_config_t *config) {
 
     // Initialize state
     preroll_count = 0;
-    dma_buffers_free_mask = (1u << DMA_BUFFER_COUNT) - 1u; // both free
+    dma_buffers_free_mask = (1u << DMA_BUFFER_COUNT) - 1u; // all three free
     audio_running = false;
 
-    printf("Audio: I2S ready (double buffer DMA with %d buffer pre-roll)\n", PREROLL_BUFFERS);
+    printf("Audio: I2S ready (triple buffer DMA with %d buffer pre-roll)\n", PREROLL_BUFFERS);
 }
 
 static bool pio_sm_enabled = false;
@@ -250,7 +273,10 @@ void i2s_dma_write_count(i2s_config_t *config, const int16_t *samples, uint32_t 
             }
         } else {
             if (free_mask) {
-                buf_index = (free_mask & 1u) ? 0 : 1;
+                // Select first free buffer (0, 1, or 2)
+                if (free_mask & 1u) buf_index = 0;
+                else if (free_mask & 2u) buf_index = 1;
+                else buf_index = 2;
                 dma_buffers_free_mask &= ~(1u << buf_index);
                 restore_interrupts(irq_state);
                 break;
@@ -310,9 +336,13 @@ void i2s_dma_write_count(i2s_config_t *config, const int16_t *samples, uint32_t 
         }
     } else {
         // Safety check: if underrun stopped the DMA chain, restart it
-        if (!dma_channel_is_busy(dma_channel_a) && !dma_channel_is_busy(dma_channel_b)) {
+        if (!dma_channel_is_busy(dma_channel_a) &&
+            !dma_channel_is_busy(dma_channel_b) &&
+            !dma_channel_is_busy(dma_channel_c)) {
+             // Restart from the appropriate channel based on which buffer was just filled
              if (buf_index == 0) dma_channel_start(dma_channel_a);
-             else dma_channel_start(dma_channel_b);
+             else if (buf_index == 1) dma_channel_start(dma_channel_b);
+             else dma_channel_start(dma_channel_c);
         }
     }
 }
@@ -336,15 +366,15 @@ static bool audio_enabled = true;
 static int master_volume = 96;  // Slight attenuation to prevent clipping
 static i2s_config_t i2s_config;
 
-// Startup mute: output silence for first N buffers to let hardware settle
-#define STARTUP_MUTE_BUFFERS 4
-static int startup_buffer_counter = 0;
+// Startup mute: output silence for first N frames to let hardware settle
+#define STARTUP_MUTE_FRAMES 8
+static int startup_frame_counter = 0;
 
 // Mixed stereo buffer (16-bit stereo samples)
 static int16_t __attribute__((aligned(4))) mixed_buffer[AUDIO_BUFFER_SAMPLES * 2];
 
-// Samples per DMA buffer
-#define SAMPLES_PER_BUFFER 735
+// Samples per DMA buffer - 1024 samples (~23ms at 44100Hz)
+#define SAMPLES_PER_BUFFER 1024
 
 bool cabal_audio_init(void) {
     // Reset all state variables
@@ -353,9 +383,10 @@ bool cabal_audio_init(void) {
     pio_sm_enabled = false;
     dma_channel_a = -1;
     dma_channel_b = -1;
+    dma_channel_c = -1;
     preroll_count = 0;
     dma_buffers_free_mask = (1u << DMA_BUFFER_COUNT) - 1u;
-    startup_buffer_counter = 0;
+    startup_frame_counter = 0;
 
     i2s_config = i2s_get_default_config();
     i2s_config.dma_trans_count = SAMPLES_PER_BUFFER;
@@ -399,6 +430,14 @@ void cabal_audio_shutdown(void) {
         dma_channel_b = -1;
     }
 
+    if (dma_channel_c >= 0) {
+        dma_channel_set_irq1_enabled(dma_channel_c, false);
+        dma_channel_abort(dma_channel_c);
+        dma_hw->ints1 = (1u << dma_channel_c);
+        dma_channel_unclaim(dma_channel_c);
+        dma_channel_c = -1;
+    }
+
     dma_buffers_free_mask = (1u << DMA_BUFFER_COUNT) - 1u;
     preroll_count = 0;
 
@@ -414,6 +453,7 @@ static void audio_dma_irq_handler(void) {
     uint32_t mask = 0;
     if (dma_channel_a >= 0) mask |= (1u << dma_channel_a);
     if (dma_channel_b >= 0) mask |= (1u << dma_channel_b);
+    if (dma_channel_c >= 0) mask |= (1u << dma_channel_c);
     ints &= mask;
     if (!ints) return;
 
@@ -430,22 +470,23 @@ static void audio_dma_irq_handler(void) {
         dma_channel_set_trans_count(dma_channel_b, dma_transfer_count, false);
         dma_buffers_free_mask |= 2u;
     }
+
+    if ((dma_channel_c >= 0) && (ints & (1u << dma_channel_c))) {
+        dma_hw->ints1 = (1u << dma_channel_c);
+        dma_channel_set_read_addr(dma_channel_c, dma_buffers[2], false);
+        dma_channel_set_trans_count(dma_channel_c, dma_transfer_count, false);
+        dma_buffers_free_mask |= 4u;
+    }
 }
 
 void cabal_audio_process_frame(void) {
     if (!audio_initialized || !audio_enabled) return;
 
-    // Fill ALL free buffers to prevent underruns if game loop is slow
-    // Loop up to 2 times (we have 2 DMA buffers)
-    for (int i = 0; i < 2; i++) {
-        // Check if a buffer is free
-        if (dma_buffers_free_mask == 0) {
-            return;  // Both buffers busy, nothing more to do
-        }
-
-        // Startup mute: output silence for first N buffers
-        if (startup_buffer_counter < STARTUP_MUTE_BUFFERS) {
-            startup_buffer_counter++;
+    // Fill all free buffers to prevent underruns
+    while (dma_buffers_free_mask != 0) {
+        // Startup mute: output silence for first N frames
+        if (startup_frame_counter < STARTUP_MUTE_FRAMES) {
+            startup_frame_counter++;
             memset(mixed_buffer, 0, SAMPLES_PER_BUFFER * 2 * sizeof(int16_t));
             i2s_dma_write_count(&i2s_config, mixed_buffer, SAMPLES_PER_BUFFER);
             continue;
@@ -455,7 +496,6 @@ void cabal_audio_process_frame(void) {
         memset(mixed_buffer, 0, SAMPLES_PER_BUFFER * 2 * sizeof(int16_t));
 
         // Call the mixer callback to fill the buffer
-        // mixer_callback expects bytes: samples * 2 channels * 2 bytes per sample
         if (g_mixer_callback) {
             g_mixer_callback((uint8_t *)mixed_buffer, SAMPLES_PER_BUFFER * 4);
         }

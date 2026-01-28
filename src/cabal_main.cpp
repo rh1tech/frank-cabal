@@ -142,10 +142,90 @@ static void drawTestPatternOSystem(void) {
     printf("Test pattern displayed.\n");
 }
 
-// GOB (Gobliins) game launcher
+// Detect which Gobliiins game version is present
+// Returns: 1 = Gob1, 2 = Gob2, 3 = Gob3, 0 = unknown
+static int detectGOBVersion(const char *gamePath) {
+    char pathBuf[256];
+
+    printf("GOB Detection: Checking files in %s\n", gamePath);
+
+    // Check for Gobliiins 3 specific files
+    snprintf(pathBuf, sizeof(pathBuf), "%s/gob3.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found gob3.stk -> Gobliiins 3\n");
+        return 3;
+    }
+    snprintf(pathBuf, sizeof(pathBuf), "%s/gob3cd.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found gob3cd.stk -> Gobliiins 3\n");
+        return 3;
+    }
+
+    // Check for Gobliiins 2 specific files
+    snprintf(pathBuf, sizeof(pathBuf), "%s/gob2.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found gob2.stk -> Gobliiins 2\n");
+        return 2;
+    }
+    snprintf(pathBuf, sizeof(pathBuf), "%s/gob2cd.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found gob2cd.stk -> Gobliiins 2\n");
+        return 2;
+    }
+    snprintf(pathBuf, sizeof(pathBuf), "%s/mus_gob2.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found mus_gob2.stk -> Gobliiins 2\n");
+        return 2;
+    }
+    // Gobliiins 2 often has "track1.mp3" for CD audio
+    snprintf(pathBuf, sizeof(pathBuf), "%s/track1.mp3", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found track1.mp3 -> Gobliiins 2 CD\n");
+        return 2;
+    }
+
+    // Check for Gobliiins 1 specific file (gob.lic is Gob1 license file)
+    snprintf(pathBuf, sizeof(pathBuf), "%s/gob.lic", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found gob.lic -> Gobliiins 1\n");
+        return 1;
+    }
+
+    // Default check - intro.stk exists in all versions
+    snprintf(pathBuf, sizeof(pathBuf), "%s/intro.stk", gamePath);
+    if (cabal_path_exists(pathBuf)) {
+        printf("GOB Detection: Found intro.stk, defaulting to Gobliiins 1\n");
+        return 1;
+    }
+
+    printf("GOB Detection: No known files found\n");
+    return 0;  // Unknown
+}
+
+// Forward declaration
+static bool launchGOBGameWithVersion(const char *gamePath, int gobVersion);
+
+// GOB (Gobliins) game launcher with auto-detection
 // Returns true if a game was found and launched
 static bool launchGOBGame(const char *gamePath) {
     printf("GOB: Attempting to launch game from %s\n", gamePath);
+
+    // Detect which GOB game version
+    int gobVersion = detectGOBVersion(gamePath);
+    printf("GOB: Detected game version: Gobliiins %d\n", gobVersion);
+
+    if (gobVersion == 0) {
+        printf("GOB: Could not detect game version, defaulting to Gobliiins 1\n");
+        gobVersion = 1;
+    }
+
+    return launchGOBGameWithVersion(gamePath, gobVersion);
+}
+
+// GOB (Gobliins) game launcher with explicit version
+// Returns true if a game was found and launched
+static bool launchGOBGameWithVersion(const char *gamePath, int gobVersion) {
+    printf("GOB: Launching game from %s as Gobliiins %d\n", gamePath, gobVersion);
 
     // Set up the game path in config manager
     ConfMan.set("path", gamePath);
@@ -162,8 +242,8 @@ static bool launchGOBGame(const char *gamePath) {
     ConfMan.setInt("autosave_period", 0);  // Disable autosave on embedded
     ConfMan.setBool("enable_unsupported_game_warning", false);
 
-    // Set music driver to null (no MIDI on embedded)
-    ConfMan.set("music_driver", "null");
+    // Set music driver to AdLib for OPL emulation
+    ConfMan.set("music_driver", "adlib");
     ConfMan.set("gm_device", "null");
     ConfMan.set("mt32_device", "null");
     ConfMan.setBool("native_mt32", false);
@@ -208,21 +288,35 @@ static bool launchGOBGame(const char *gamePath) {
         printf("GOB: WARNING - Game directory not found or not accessible!\n");
     }
 
-    // Create a minimal GOB game description for Gobliiins 1 (VGA DOS version)
+    // Create a minimal GOB game description
     static Gob::GOBGameDescription gameDesc;
     memset(&gameDesc, 0, sizeof(gameDesc));
 
-    // Set up the ADGameDescription part
-    gameDesc.desc.gameid = "gob1";
-    gameDesc.desc.extra = "EGA";
+    // Set up the ADGameDescription part based on detected version
+    if (gobVersion == 3) {
+        gameDesc.desc.gameid = "gob3";
+        gameDesc.desc.extra = "VGA";
+        gameDesc.gameType = Gob::kGameTypeGob3;
+        gameDesc.features = Gob::kFeaturesAdLib;
+        printf("GOB: Configuring for Gobliiins 3 (VGA)\n");
+    } else if (gobVersion == 2) {
+        gameDesc.desc.gameid = "gob2";
+        gameDesc.desc.extra = "VGA";
+        gameDesc.gameType = Gob::kGameTypeGob2;
+        gameDesc.features = Gob::kFeaturesAdLib;
+        printf("GOB: Configuring for Gobliiins 2 (VGA)\n");
+    } else {
+        gameDesc.desc.gameid = "gob1";
+        gameDesc.desc.extra = "EGA";
+        gameDesc.gameType = Gob::kGameTypeGob1;
+        gameDesc.features = Gob::kFeaturesEGA | Gob::kFeaturesAdLib;
+        printf("GOB: Configuring for Gobliiins 1 (EGA)\n");
+    }
+
     gameDesc.desc.language = Common::EN_ANY;
     gameDesc.desc.platform = Common::kPlatformDOS;
     gameDesc.desc.flags = ADGF_NO_FLAGS;
     gameDesc.desc.guioptions = "";
-
-    // Set GOB-specific fields
-    gameDesc.gameType = Gob::kGameTypeGob1;
-    gameDesc.features = Gob::kFeaturesEGA | Gob::kFeaturesAdLib;  // EGA DOS version
     gameDesc.startStkBase = 0;
     gameDesc.startTotBase = 0;
     gameDesc.demoIndex = 0;
@@ -264,8 +358,8 @@ static bool launchAGIGame(const char *gamePath) {
     ConfMan.setInt("autosave_period", 0);  // Disable autosave on embedded
     ConfMan.setBool("enable_unsupported_game_warning", false);
 
-    // Set music driver to null (no MIDI on embedded)
-    ConfMan.set("music_driver", "null");
+    // Set music driver to AdLib for OPL emulation
+    ConfMan.set("music_driver", "adlib");
     ConfMan.set("gm_device", "null");
     ConfMan.set("mt32_device", "null");
     ConfMan.setBool("native_mt32", false);
@@ -450,8 +544,31 @@ extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
 
     // Try to launch a GOB (Gobliins) game if found on SD card
+    // Check for explicit version directories first (gob1, gob2, gob3)
+    if (cabal_path_exists("/cabal/gob3")) {
+        printf("Cabal: Found GOB3 directory, launching Gobliiins 3...\n");
+        if (launchGOBGameWithVersion("/cabal/gob3", 3)) {
+            printf("Cabal: GOB game completed.\n");
+            return 0;
+        }
+    }
+    if (cabal_path_exists("/cabal/gob2")) {
+        printf("Cabal: Found GOB2 directory, launching Gobliiins 2...\n");
+        if (launchGOBGameWithVersion("/cabal/gob2", 2)) {
+            printf("Cabal: GOB game completed.\n");
+            return 0;
+        }
+    }
+    if (cabal_path_exists("/cabal/gob1")) {
+        printf("Cabal: Found GOB1 directory, launching Gobliiins 1...\n");
+        if (launchGOBGameWithVersion("/cabal/gob1", 1)) {
+            printf("Cabal: GOB game completed.\n");
+            return 0;
+        }
+    }
+    // Fall back to auto-detect with /cabal/gob
     if (cabal_path_exists("/cabal/gob")) {
-        printf("Cabal: Found GOB game directory, attempting to launch...\n");
+        printf("Cabal: Found GOB game directory, auto-detecting version...\n");
         if (launchGOBGame("/cabal/gob")) {
             printf("Cabal: GOB game completed.\n");
             return 0;

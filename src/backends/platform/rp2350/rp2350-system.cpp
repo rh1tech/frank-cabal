@@ -338,7 +338,18 @@ uint32 OSystem_RP2350::getMillis() {
 }
 
 void OSystem_RP2350::delayMillis(uint msecs) {
+#ifdef USE_I2S_AUDIO
+	// Process audio during delays to prevent underruns
+	// Call audio every ~16ms to match buffer timing (735 samples @ 44100Hz = ~16.7ms)
+	while (msecs > 0) {
+		uint chunk = (msecs > 16) ? 16 : msecs;
+		cabal_delay(chunk);
+		msecs -= chunk;
+		cabal_audio_process_frame();
+	}
+#else
 	cabal_delay(msecs);
+#endif
 }
 
 void OSystem_RP2350::getTimeAndDate(TimeDate &t) const {
