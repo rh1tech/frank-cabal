@@ -1,0 +1,35 @@
+# Build directory
+build/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled files
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.uf2
+*.dis
+*.map
+
+# Pico SDK (should be external)
+pico-sdk/
+pico-extras/
+
+# Generated files
+*.pio.h
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Debug files
+*.log
+*.dmp
