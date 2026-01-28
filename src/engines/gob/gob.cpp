@@ -284,17 +284,28 @@ void GobEngine::setTrueColor(bool trueColor) {
 }
 
 Common::Error GobEngine::run() {
+	printf("GOB: GobEngine::run() starting\n");
 	Common::Error err;
 
+	printf("GOB: initGameParts()...\n");
 	err = initGameParts();
-	if (err.getCode() != Common::kNoError)
+	if (err.getCode() != Common::kNoError) {
+		printf("GOB: initGameParts() FAILED: %d\n", err.getCode());
 		return err;
+	}
+	printf("GOB: initGameParts() done\n");
 
+	printf("GOB: initGraphics()...\n");
 	err = initGraphics();
-	if (err.getCode() != Common::kNoError)
+	if (err.getCode() != Common::kNoError) {
+		printf("GOB: initGraphics() FAILED: %d\n", err.getCode());
 		return err;
+	}
+	printf("GOB: initGraphics() done\n");
 
+	printf("GOB: Opening AudioCD manager...\n");
 	_system->getAudioCDManager()->open();
+	printf("GOB: AudioCD opened\n");
 
 	_global->_debugFlag = 1;
 	_video->_doRangeClamp = true;
@@ -357,7 +368,9 @@ Common::Error GobEngine::run() {
 	}
 	_global->_languageWanted = _global->_language;
 
+	printf("GOB: Calling _init->initGame()...\n");
 	_init->initGame();
+	printf("GOB: _init->initGame() returned\n");
 
 	return Common::kNoError;
 }

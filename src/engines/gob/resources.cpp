@@ -30,6 +30,7 @@
 #include "gob/dataio.h"
 #include "gob/game.h"
 #include "gob/global.h"
+#include "gob/script.h"
 
 namespace Gob {
 
@@ -613,10 +614,15 @@ bool Resources::dumpResource(const Resource &resource, uint16 id,
 }
 
 Resource *Resources::getTOTResource(uint16 id) const {
+	printf("GOB: getTOTResource(%d) from %s (count=%d)\n", id, _totFile.c_str(),
+		_totResourceTable ? _totResourceTable->itemsCount : -1);
 	if (!_totResourceTable || (id >= _totResourceTable->itemsCount)) {
 		warning("Trying to load non-existent TOT resource (%s, %d/%d)",
 				_totFile.c_str(), id,
 				_totResourceTable ? (_totResourceTable->itemsCount - 1) : -1);
+		// Dump script position for debugging
+		printf("GOB: Invalid resource ID! Script pos=%ld\n",
+			(long)(_vm->_game ? _vm->_game->_script->pos() : -1));
 		return 0;
 	}
 

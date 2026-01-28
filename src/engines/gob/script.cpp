@@ -378,7 +378,9 @@ bool Script::loadTOT(const Common::String &fileName) {
 		return false;
 
 	_totData = new byte[_totSize];
-	if (stream->read(_totData, _totSize) != _totSize)
+
+	uint32 bytesRead = stream->read(_totData, _totSize);
+	if (bytesRead != _totSize)
 		return false;
 
 	return true;

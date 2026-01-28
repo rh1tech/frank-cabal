@@ -339,6 +339,7 @@ void Inter::callSub(int16 retFlag) {
 			(_vm->_game->_script->pos() != 0)) {
 
 		block = _vm->_game->_script->peekByte();
+
 		if (block == 1)
 			funcBlock(retFlag);
 		else if (block == 2)

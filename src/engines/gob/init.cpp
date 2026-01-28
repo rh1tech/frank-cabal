@@ -82,17 +82,28 @@ void Init::doDemo() {
 }
 
 void Init::initGame() {
+	printf("GOB Init::initGame() starting...\n");
 	initVideo();
+	printf("GOB: initVideo done\n");
 	updateConfig();
+	printf("GOB: updateConfig done\n");
 
 	if (!_vm->isDemo()) {
-		if (_vm->_dataIO->hasFile(_vm->_startStk))
+		printf("GOB: Looking for startStk: %s\n", _vm->_startStk.c_str());
+		if (_vm->_dataIO->hasFile(_vm->_startStk)) {
+			printf("GOB: Found %s, opening archive...\n", _vm->_startStk.c_str());
 			_vm->_dataIO->openArchive(_vm->_startStk, true);
+			printf("GOB: Archive opened\n");
+		} else {
+			printf("GOB: WARNING - %s not found!\n", _vm->_startStk.c_str());
+		}
 	}
 
 	_vm->_util->initInput();
+	printf("GOB: initInput done\n");
 
 	_vm->_video->initPrimary(_vm->_global->_videoMode);
+	printf("GOB: initPrimary done\n");
 	_vm->_global->_mouseXShift = 1;
 	_vm->_global->_mouseYShift = 1;
 
@@ -130,13 +141,15 @@ void Init::initGame() {
 		return;
 	}
 
+	printf("GOB: Looking for intro.inf...\n");
 	Common::SeekableReadStream *infFile = _vm->_dataIO->getFile("intro.inf");
 	if (!infFile) {
-
+		printf("GOB: intro.inf not found, loading default fonts\n");
 		for (int i = 0; i < 4; i++)
 			_vm->_draw->loadFont(i, _fontNames[i]);
 
 	} else {
+		printf("GOB: Loading fonts from intro.inf\n");
 
 		for (int i = 0; i < 8; i++) {
 			if (infFile->eos())
@@ -154,11 +167,14 @@ void Init::initGame() {
 		delete infFile;
 	}
 
+	printf("GOB: Looking for startTot: %s\n", _vm->_startTot.c_str());
 	if (_vm->_dataIO->hasFile(_vm->_startTot)) {
+		printf("GOB: Found %s, allocating vars...\n", _vm->_startTot.c_str());
 		_vm->_inter->allocateVars(Script::getVariablesCount(_vm->_startTot.c_str(), _vm));
 
 		_vm->_game->_curTotFile = _vm->_startTot;
 
+		printf("GOB: Loading sounds...\n");
 		_vm->_sound->cdTest(1, "GOB");
 		_vm->_sound->cdLoadLIC("gob.lic");
 
@@ -201,13 +217,18 @@ void Init::initGame() {
 			}
 		}
 
+		printf("GOB: Starting game loop...\n");
 		_vm->_game->start();
+		printf("GOB: Game loop finished\n");
 
 		_vm->_sound->cdStop();
 		_vm->_sound->cdUnloadLIC();
 
+	} else {
+		printf("GOB: ERROR - %s not found! Cannot start game.\n", _vm->_startTot.c_str());
 	}
 
+	printf("GOB: initGame() cleanup...\n");
 	delete _palDesc;
 	_vm->_dataIO->closeArchive(true);
 	_vm->_video->initPrimary(-1);

@@ -746,10 +746,13 @@ void Inter_v1::o1_switch(OpFuncParams &params) {
 
 	checkSwitchTable(offset);
 
-	_vm->_game->_script->call(offset);
-
-	if (offset == 0)
+	if (offset == 0) {
+		// No matching case - skip the switch block
 		_vm->_game->_script->setFinished(true);
+		return;
+	}
+
+	_vm->_game->_script->call(offset);
 
 	if ((params.counter == params.cmdCount) && (params.retFlag == 2)) {
 		_vm->_game->_script->pop(false);

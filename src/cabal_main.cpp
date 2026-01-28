@@ -19,6 +19,9 @@
 #include "common/fs.h"
 #include "common/archive.h"
 
+// GOB Engine includes
+#include "gob/gob.h"
+
 // Forward declare AGIGameDescription since it's defined in detection.cpp
 namespace Agi {
 struct AGIGameDescription {
@@ -27,6 +30,18 @@ struct AGIGameDescription {
     int gameType;
     uint32 features;
     uint16 version;
+};
+}
+
+// Forward declare GOBGameDescription
+namespace Gob {
+struct GOBGameDescription {
+    ADGameDescription desc;
+    GameType gameType;
+    int32 features;
+    const char *startStkBase;
+    const char *startTotBase;
+    uint32 demoIndex;
 };
 }
 
@@ -125,6 +140,110 @@ static void drawTestPatternOSystem(void) {
     g_system->updateScreen();
 
     printf("Test pattern displayed.\n");
+}
+
+// GOB (Gobliins) game launcher
+// Returns true if a game was found and launched
+static bool launchGOBGame(const char *gamePath) {
+    printf("GOB: Attempting to launch game from %s\n", gamePath);
+
+    // Set up the game path in config manager
+    ConfMan.set("path", gamePath);
+    ConfMan.setActiveDomain("cabal-gob");
+
+    // Set default audio/config values that Engine::syncSoundSettings() expects
+    ConfMan.setInt("music_volume", 192);
+    ConfMan.setInt("sfx_volume", 192);
+    ConfMan.setInt("speech_volume", 192);
+    ConfMan.setBool("mute", false);
+    ConfMan.setBool("speech_mute", false);
+    ConfMan.setBool("sfx_mute", false);
+    ConfMan.setBool("music_mute", false);
+    ConfMan.setInt("autosave_period", 0);  // Disable autosave on embedded
+    ConfMan.setBool("enable_unsupported_game_warning", false);
+
+    // Set music driver to null (no MIDI on embedded)
+    ConfMan.set("music_driver", "null");
+    ConfMan.set("gm_device", "null");
+    ConfMan.set("mt32_device", "null");
+    ConfMan.setBool("native_mt32", false);
+    ConfMan.setBool("enable_gs", false);
+    ConfMan.setBool("multi_midi", false);
+    ConfMan.setInt("midi_gain", 100);
+    ConfMan.setBool("subtitles", true);
+    ConfMan.setInt("talkspeed", 60);
+
+    // GOB-specific settings
+    ConfMan.setBool("copy_protection", false);  // Skip copy protection
+    ConfMan.set("language", "en");
+    ConfMan.set("opl_driver", "auto");
+
+    // Graphics settings
+    ConfMan.set("gfx_mode", "normal");
+    ConfMan.setBool("aspect_ratio", false);
+    ConfMan.setBool("fullscreen", false);
+    ConfMan.setBool("filtering", false);
+
+    // Load all plugins (engine and music) before creating the engine
+    printf("GOB: Loading plugins...\n");
+    PluginManager::instance().loadAllPlugins();
+    printf("GOB: Plugins loaded.\n");
+
+    // Add game directory to SearchManager so engine can find files
+    printf("GOB: Setting up search path...\n");
+    Common::FSNode gameDir(gamePath);
+    if (gameDir.exists() && gameDir.isDirectory()) {
+        SearchMan.addDirectory(gamePath, gameDir, 0, 4);
+        printf("GOB: Added %s to search path\n", gamePath);
+
+        // List files in the directory for debugging
+        Common::FSList files;
+        if (gameDir.getChildren(files, Common::FSNode::kListFilesOnly)) {
+            printf("GOB: Found %d files in game directory:\n", (int)files.size());
+            for (Common::FSList::iterator it = files.begin(); it != files.end(); ++it) {
+                printf("  - %s\n", it->getName().c_str());
+            }
+        }
+    } else {
+        printf("GOB: WARNING - Game directory not found or not accessible!\n");
+    }
+
+    // Create a minimal GOB game description for Gobliiins 1 (VGA DOS version)
+    static Gob::GOBGameDescription gameDesc;
+    memset(&gameDesc, 0, sizeof(gameDesc));
+
+    // Set up the ADGameDescription part
+    gameDesc.desc.gameid = "gob1";
+    gameDesc.desc.extra = "EGA";
+    gameDesc.desc.language = Common::EN_ANY;
+    gameDesc.desc.platform = Common::kPlatformDOS;
+    gameDesc.desc.flags = ADGF_NO_FLAGS;
+    gameDesc.desc.guioptions = "";
+
+    // Set GOB-specific fields
+    gameDesc.gameType = Gob::kGameTypeGob1;
+    gameDesc.features = Gob::kFeaturesEGA | Gob::kFeaturesAdLib;  // EGA DOS version
+    gameDesc.startStkBase = 0;
+    gameDesc.startTotBase = 0;
+    gameDesc.demoIndex = 0;
+
+    printf("GOB: Creating engine instance...\n");
+
+    // Create the engine - GOB uses a two-step init process
+    Gob::GobEngine *gobEngine = new Gob::GobEngine(g_system);
+    gobEngine->initGame(&gameDesc);
+
+    // Cast to Engine* to access public run() method
+    ::Engine *engine = gobEngine;
+
+    printf("GOB: Running game...\n");
+
+    // Run the engine (this calls init() + go() internally)
+    Common::Error err = engine->run();
+
+    printf("GOB: Game finished with code %d (%s)\n", err.getCode(), err.getDesc().c_str());
+    delete engine;
+    return (err.getCode() == Common::kNoError);
 }
 
 // AGI game launcher
@@ -329,6 +448,16 @@ extern "C" void cabal_init(void) {
 // Main game loop - called from main.c
 extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
+
+    // Try to launch a GOB (Gobliins) game if found on SD card
+    if (cabal_path_exists("/cabal/gob")) {
+        printf("Cabal: Found GOB game directory, attempting to launch...\n");
+        if (launchGOBGame("/cabal/gob")) {
+            printf("Cabal: GOB game completed.\n");
+            return 0;
+        }
+        printf("Cabal: GOB game launch failed, trying AGI...\n");
+    }
 
     // Try to launch an AGI game if found on SD card
     if (cabal_path_exists("/cabal/agi")) {

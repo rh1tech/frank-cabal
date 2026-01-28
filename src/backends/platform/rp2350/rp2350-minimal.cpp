@@ -9,6 +9,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef USB_HID_ENABLED
+#include "usbkbd_wrapper.h"
+#include "usbmouse_wrapper.h"
+#endif
+
 //============================================================================
 // Internal State
 //============================================================================
@@ -59,11 +64,17 @@ void cabal_system_init(void) {
     g_state.startTime = time_us_32();
 
     // Initialize input
+#ifdef USB_HID_ENABLED
+    printf("  Initializing USB HID keyboard...\n");
+    usbkbd_init();
+    printf("  Initializing USB HID mouse...\n");
+    usbmouse_init();
+#else
     printf("  Initializing PS/2 keyboard...\n");
     ps2kbd_init();
-
     printf("  Initializing PS/2 mouse...\n");
     ps2mouse_wrapper_init();
+#endif
 
     // Default mouse position
     g_state.mouseX = 160;
@@ -298,6 +309,91 @@ void cabal_set_mouse_cursor(const uint8_t *data, int w, int h,
 // Events
 //============================================================================
 
+#ifdef USB_HID_ENABLED
+// USB HID event polling
+bool cabal_poll_event(CabalEvent *event) {
+    // Poll USB HID
+    usbkbd_tick();
+
+    // Check for keyboard events
+    int is_down, keycode;
+    if (usbkbd_get_key(&is_down, &keycode)) {
+        event->type = is_down ? CABAL_EVENT_KEYDOWN : CABAL_EVENT_KEYUP;
+        event->kbd.keycode = keycode;
+
+        // Get ASCII value (basic mapping)
+        if (keycode >= 32 && keycode < 127) {
+            event->kbd.ascii = keycode;
+        } else {
+            event->kbd.ascii = 0;
+        }
+
+        // Modifier flags handled via modifier keycodes
+        event->kbd.flags = 0;
+        return true;
+    }
+
+    // Check for mouse events (USB HID returns all in one call)
+    int16_t dx, dy;
+    int8_t dz;
+    uint8_t buttons;
+    if (usbmouse_get_event(&dx, &dy, &dz, &buttons)) {
+        // Check for button changes first (higher priority)
+        if (buttons != g_state.prevMouseButtons) {
+            // Left button
+            if ((buttons & 1) != (g_state.prevMouseButtons & 1)) {
+                event->type = (buttons & 1) ? CABAL_EVENT_LBUTTONDOWN : CABAL_EVENT_LBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~1) | (buttons & 1);
+                return true;
+            }
+            // Right button
+            if ((buttons & 2) != (g_state.prevMouseButtons & 2)) {
+                event->type = (buttons & 2) ? CABAL_EVENT_RBUTTONDOWN : CABAL_EVENT_RBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~2) | (buttons & 2);
+                return true;
+            }
+            // Middle button
+            if ((buttons & 4) != (g_state.prevMouseButtons & 4)) {
+                event->type = (buttons & 4) ? CABAL_EVENT_MBUTTONDOWN : CABAL_EVENT_MBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~4) | (buttons & 4);
+                return true;
+            }
+            g_state.prevMouseButtons = buttons;
+        }
+
+        // Apply mouse motion if there is any (reduced sensitivity for USB)
+        if (dx != 0 || dy != 0) {
+            g_state.mouseX += dx / 2;
+            g_state.mouseY += dy / 2;  // USB HID Y is already in screen direction
+
+            // Clamp to screen bounds
+            if (g_state.mouseX < 0) g_state.mouseX = 0;
+            if (g_state.mouseX >= g_state.screenWidth) g_state.mouseX = g_state.screenWidth - 1;
+            if (g_state.mouseY < 0) g_state.mouseY = 0;
+            if (g_state.mouseY >= g_state.screenHeight) g_state.mouseY = g_state.screenHeight - 1;
+
+            event->type = CABAL_EVENT_MOUSEMOVE;
+            event->mouse.x = g_state.mouseX;
+            event->mouse.y = g_state.mouseY;
+
+            g_state.cursorX = g_state.mouseX;
+            g_state.cursorY = g_state.mouseY;
+            return true;
+        }
+    }
+
+    event->type = CABAL_EVENT_NONE;
+    return false;
+}
+
+#else
+// PS/2 event polling
 bool cabal_poll_event(CabalEvent *event) {
     // Poll input devices
     ps2kbd_tick();
@@ -326,38 +422,7 @@ bool cabal_poll_event(CabalEvent *event) {
         return true;
     }
 
-    // Check for mouse motion
-    int16_t dx, dy;
-    if (ps2mouse_get_motion(&dx, &dy)) {
-        // Clamp large deltas to prevent jumping (likely spurious values)
-        const int16_t MAX_DELTA = 20;
-        if (dx > MAX_DELTA) dx = MAX_DELTA;
-        if (dx < -MAX_DELTA) dx = -MAX_DELTA;
-        if (dy > MAX_DELTA) dy = MAX_DELTA;
-        if (dy < -MAX_DELTA) dy = -MAX_DELTA;
-
-        // Reduce sensitivity
-        g_state.mouseX += dx / 2;
-        g_state.mouseY -= dy / 2;  // Invert Y for screen coordinates
-
-        // Clamp to screen bounds
-        if (g_state.mouseX < 0) g_state.mouseX = 0;
-        if (g_state.mouseX >= g_state.screenWidth) g_state.mouseX = g_state.screenWidth - 1;
-        if (g_state.mouseY < 0) g_state.mouseY = 0;
-        if (g_state.mouseY >= g_state.screenHeight) g_state.mouseY = g_state.screenHeight - 1;
-
-        event->type = CABAL_EVENT_MOUSEMOVE;
-        event->mouse.x = g_state.mouseX;
-        event->mouse.y = g_state.mouseY;
-
-        // Update cursor position
-        g_state.cursorX = g_state.mouseX;
-        g_state.cursorY = g_state.mouseY;
-
-        return true;
-    }
-
-    // Check for mouse button events
+    // Check for mouse button events FIRST (higher priority than motion)
     uint8_t buttons = ps2mouse_get_buttons();
     if (buttons != g_state.prevMouseButtons) {
         // Left button
@@ -387,9 +452,41 @@ bool cabal_poll_event(CabalEvent *event) {
         g_state.prevMouseButtons = buttons;
     }
 
+    // Check for mouse motion
+    int16_t dx, dy;
+    if (ps2mouse_get_motion(&dx, &dy)) {
+        // Clamp extreme values only (spurious data protection)
+        const int16_t MAX_DELTA = 127;
+        if (dx > MAX_DELTA) dx = MAX_DELTA;
+        if (dx < -MAX_DELTA) dx = -MAX_DELTA;
+        if (dy > MAX_DELTA) dy = MAX_DELTA;
+        if (dy < -MAX_DELTA) dy = -MAX_DELTA;
+
+        // Apply mouse motion with 2x sensitivity for 320x200 screen
+        g_state.mouseX += dx * 2;
+        g_state.mouseY -= dy * 2;  // Invert Y for screen coordinates
+
+        // Clamp to screen bounds
+        if (g_state.mouseX < 0) g_state.mouseX = 0;
+        if (g_state.mouseX >= g_state.screenWidth) g_state.mouseX = g_state.screenWidth - 1;
+        if (g_state.mouseY < 0) g_state.mouseY = 0;
+        if (g_state.mouseY >= g_state.screenHeight) g_state.mouseY = g_state.screenHeight - 1;
+
+        event->type = CABAL_EVENT_MOUSEMOVE;
+        event->mouse.x = g_state.mouseX;
+        event->mouse.y = g_state.mouseY;
+
+        // Update cursor position
+        g_state.cursorX = g_state.mouseX;
+        g_state.cursorY = g_state.mouseY;
+
+        return true;
+    }
+
     event->type = CABAL_EVENT_NONE;
     return false;
 }
+#endif
 
 //============================================================================
 // Timing

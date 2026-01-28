@@ -570,19 +570,26 @@ void Game::playTot(int16 function) {
 				function = 0;
 			}
 
+			printf("GOB Game: Loading TOT file '%s'\n", _curTotFile.c_str());
+
 			if (!_script->load(_curTotFile)) {
+				printf("GOB Game: Script load FAILED for '%s'\n", _curTotFile.c_str());
 				_vm->_draw->blitCursor();
 				_vm->_inter->_terminate = 2;
 				break;
 			}
+			printf("GOB Game: Script loaded successfully\n");
 
 			_resources->load(_curTotFile);
+			printf("GOB Game: Resources loaded\n");
 
 			_vm->_global->_inter_animDataSize = _script->getAnimDataSize();
 			if (!_vm->_inter->_variables)
 				_vm->_inter->allocateVars(_script->getVariablesCount() & 0xFFFF);
 
-			_script->seek(_script->getFunctionOffset(TOTFile::kFunctionStart));
+			int32 startOffset = _script->getFunctionOffset(TOTFile::kFunctionStart);
+			printf("GOB Game: Function start offset = %ld\n", (long)startOffset);
+			_script->seek(startOffset);
 
 			_vm->_inter->renewTimeInVars();
 
@@ -834,6 +841,9 @@ void Game::start() {
 
 // flagbits: 0 = freeInterVariables, 1 = function -1
 void Game::totSub(int8 flags, const Common::String &totFile) {
+	printf("GOB Game: totSub(flags=%d, totFile='%s') numEnv=%d curEnv=%d\n",
+		flags, totFile.c_str(), _numEnvironments, _curEnvironment);
+
 	int8 curBackupPos;
 
 	if ((flags == 16) || (flags == 17)) {

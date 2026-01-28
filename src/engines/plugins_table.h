@@ -12,4 +12,8 @@
 LINK_PLUGIN(AGI)
 #endif
 
+#ifdef ENABLE_GOB
+LINK_PLUGIN(GOB)
+#endif
+
 #endif // ENGINES_PLUGINS_TABLE_H

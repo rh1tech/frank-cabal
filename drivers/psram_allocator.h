@@ -25,5 +25,9 @@ size_t psram_get_temp_offset(void);
 void psram_set_temp_offset(size_t offset);
 
 void psram_set_sram_mode(int enable); // Force SRAM allocation for proper malloc/free
+void psram_set_ready(int ready);      // Call after PSRAM hardware is initialized
+
+// Debug: Print memory status
+void psram_print_status(void);
 
 #endif

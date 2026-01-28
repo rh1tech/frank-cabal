@@ -54,21 +54,51 @@ void cabal_swap_buffers(void) {
     graphics_set_buffer(current_framebuffer);
 }
 
-// Set flash timing for overclocking
+// Flash timing configuration for overclocking
+// Flash max safe frequency without additional wait states
+#define FLASH_MAX_FREQ_MHZ 88
+
 #if CPU_CLOCK_MHZ > 252
+#include "hardware/structs/qmi.h"
+
 static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
-    // Adjust flash timing for higher clock speeds
-    // This is critical for stable operation above 252 MHz
-    if (cpu_mhz >= 504) {
-        // Very aggressive timing
-    } else if (cpu_mhz >= 378) {
-        // Moderate timing
+    // Calculate flash clock divisor and receive delay for stable operation
+    const int clock_hz = cpu_mhz * 1000000;
+    const int max_flash_freq = FLASH_MAX_FREQ_MHZ * 1000000;
+
+    // Calculate minimum divisor to keep flash below max frequency
+    int divisor = (clock_hz + max_flash_freq - (max_flash_freq >> 4) - 1) / max_flash_freq;
+    if (divisor == 1 && clock_hz >= 166000000) {
+        divisor = 2;
     }
+
+    // Calculate receive delay - needs extra cycle at high speeds
+    int rxdelay = divisor;
+    if (clock_hz / divisor > 100000000 && clock_hz >= 166000000) {
+        rxdelay += 1;
+    }
+
+    // Configure QMI flash timing (M0 = flash on CS0)
+    qmi_hw->m[0].timing = 0x60007000 |
+                        rxdelay << QMI_M0_TIMING_RXDELAY_LSB |
+                        divisor << QMI_M0_TIMING_CLKDIV_LSB;
 }
 #endif
 
 int main(void) {
-    // Initialize stdio for USB serial console
+    // Overclock setup MUST happen before stdio_init_all()
+    // USB needs to initialize at the target clock speed
+#if CPU_CLOCK_MHZ > 252
+    vreg_disable_voltage_limit();
+    vreg_set_voltage(CPU_VOLTAGE);
+    set_flash_timings(CPU_CLOCK_MHZ);
+    sleep_ms(10);
+#endif
+
+    // Set system clock before USB init
+    set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, false);
+
+    // Initialize stdio for USB serial console (at target clock speed)
     stdio_init_all();
 
     // Wait for USB serial connection with countdown
@@ -86,6 +116,7 @@ int main(void) {
 #endif
     printf("CPU: %d MHz\n", CPU_CLOCK_MHZ);
     printf("PSRAM: %d MHz max\n", PSRAM_MAX_FREQ_MHZ);
+    printf("System clock: %lu Hz\n", clock_get_hz(clk_sys));
     printf("\n");
 
     // Startup delay for USB serial console
@@ -96,19 +127,6 @@ int main(void) {
         sleep_ms(1000);
     }
     printf("Go!\n\n");
-
-#if CPU_CLOCK_MHZ > 252
-    // Overclock setup
-    printf("Overclocking to %d MHz...\n", CPU_CLOCK_MHZ);
-    vreg_disable_voltage_limit();
-    vreg_set_voltage(CPU_VOLTAGE);
-    set_flash_timings(CPU_CLOCK_MHZ);
-    sleep_ms(100);
-#endif
-
-    // Set system clock
-    set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, false);
-    printf("System clock: %lu Hz\n", clock_get_hz(clk_sys));
 
     // Initialize PSRAM
     printf("Initializing PSRAM...\n");

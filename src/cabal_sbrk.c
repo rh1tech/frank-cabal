@@ -1,10 +1,11 @@
 /* Cabal - Legacy Game Implementations
  *
- * Stub file - PSRAM heap disabled for now
- * Using standard SRAM heap with explicit psram_malloc for large allocations
+ * Enable PSRAM heap after hardware initialization
  */
 
-// Placeholder function (does nothing - heap stays in SRAM)
+#include "psram_allocator.h"
+
+// Called after PSRAM hardware is initialized
 void cabal_enable_psram_heap(void) {
-    // Do nothing - we'll use psram_malloc explicitly for large allocations
+    psram_set_ready(1);  // Enable PSRAM allocations in new/malloc
 }

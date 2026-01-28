@@ -8,11 +8,32 @@
 #include "backends/fs/rp2350/rp2350-fs-factory.h"
 #include "backends/events/default/default-events.h"
 #include "backends/timer/default/default-timer.h"
+#include "backends/audiocd/rp2350/rp2350-audiocd.h"
 #include "common/config-manager.h"
 #include "audio/mixer_intern.h"
 
+#ifdef USE_I2S_AUDIO
+extern "C" {
+#include "audio.h"
+}
+#endif
+
 #include <stdio.h>
 #include <string.h>
+
+// Global mixer pointer for audio callback
+static Audio::MixerImpl *g_mixer = nullptr;
+
+// Audio callback function called from C audio driver
+#ifdef USE_I2S_AUDIO
+extern "C" void cabal_audio_set_mixer_callback(void (*callback)(uint8_t *stream, int len));
+
+static void mixer_callback_wrapper(uint8_t *stream, int len) {
+	if (g_mixer) {
+		g_mixer->mixCallback(stream, len);
+	}
+}
+#endif
 
 // Graphics mode
 static const OSystem::GraphicsMode s_supportedGraphicsModes[] = {
@@ -60,9 +81,20 @@ void OSystem_RP2350::initBackend() {
 	// Record start time
 	_startTime = cabal_get_millis();
 
-	// Create mixer (no actual audio output on embedded, but engines need it)
-	_mixer = new Audio::MixerImpl(this, 22050);
+	// Create mixer at 44100 Hz (standard CD quality)
+	_mixer = new Audio::MixerImpl(this, 44100);
 	_mixer->setReady(true);
+	g_mixer = _mixer;
+
+#ifdef USE_I2S_AUDIO
+	// Initialize I2S audio driver
+	printf("OSystem_RP2350: Initializing I2S audio...\n");
+	cabal_audio_set_mixer_callback(mixer_callback_wrapper);
+	cabal_audio_init();
+#endif
+
+	// Create AudioCD manager (stub - no CD audio on embedded)
+	_audiocdManager = new RP2350AudioCDManager();
 
 	printf("OSystem_RP2350: Backend initialized.\n");
 	OSystem::initBackend();
@@ -197,6 +229,11 @@ void OSystem_RP2350::updateScreen() {
 
 	// Push to display
 	cabal_update_screen();
+
+#ifdef USE_I2S_AUDIO
+	// Process audio - mix and send to I2S
+	cabal_audio_process_frame();
+#endif
 }
 
 void OSystem_RP2350::setShakePos(int shakeOffset) {

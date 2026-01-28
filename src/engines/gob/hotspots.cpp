@@ -1647,7 +1647,14 @@ void Hotspots::evaluate() {
 		_vm->_draw->blitCursor();
 
 	if (!_vm->_inter->_terminate && (!finishedDuration)) {
-		_vm->_game->_script->seek(_hotspots[index].funcLeave);
+		uint32 funcLeave = _hotspots[index].funcLeave;
+		if (funcLeave == 0) {
+			printf("GOB Hotspots: funcLeave is 0 for index %d, skipping\n", index);
+		} else {
+			printf("GOB Hotspots: seeking to funcLeave=%lu for index %d\n",
+				(unsigned long)funcLeave, index);
+			_vm->_game->_script->seek(funcLeave);
+		}
 
 		_vm->_inter->storeMouse();
 		if (getCurrentHotspot() == 0) {
