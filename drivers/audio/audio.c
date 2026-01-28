@@ -459,6 +459,8 @@ static void audio_dma_irq_handler(void) {
 
     if ((dma_channel_a >= 0) && (ints & (1u << dma_channel_a))) {
         dma_hw->ints1 = (1u << dma_channel_a);
+        // Clear buffer to silence to prevent stale audio looping during heavy loading
+        memset(dma_buffers[0], 0, dma_transfer_count * sizeof(uint32_t));
         dma_channel_set_read_addr(dma_channel_a, dma_buffers[0], false);
         dma_channel_set_trans_count(dma_channel_a, dma_transfer_count, false);
         dma_buffers_free_mask |= 1u;
@@ -466,6 +468,7 @@ static void audio_dma_irq_handler(void) {
 
     if ((dma_channel_b >= 0) && (ints & (1u << dma_channel_b))) {
         dma_hw->ints1 = (1u << dma_channel_b);
+        memset(dma_buffers[1], 0, dma_transfer_count * sizeof(uint32_t));
         dma_channel_set_read_addr(dma_channel_b, dma_buffers[1], false);
         dma_channel_set_trans_count(dma_channel_b, dma_transfer_count, false);
         dma_buffers_free_mask |= 2u;
@@ -473,6 +476,7 @@ static void audio_dma_irq_handler(void) {
 
     if ((dma_channel_c >= 0) && (ints & (1u << dma_channel_c))) {
         dma_hw->ints1 = (1u << dma_channel_c);
+        memset(dma_buffers[2], 0, dma_transfer_count * sizeof(uint32_t));
         dma_channel_set_read_addr(dma_channel_c, dma_buffers[2], false);
         dma_channel_set_trans_count(dma_channel_c, dma_transfer_count, false);
         dma_buffers_free_mask |= 4u;
