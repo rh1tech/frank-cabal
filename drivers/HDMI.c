@@ -107,9 +107,9 @@ static int dma_chan_pal_conv_ctrl;
 static int dma_chan_pal_conv;
 
 //DMA буферы
-//основные строчные данные
-static uint32_t* dma_lines[2] = { NULL,NULL };
-static uint32_t* DMA_BUF_ADDR[2];
+//основные строчные данные - placed in scratch RAM for consistent timing
+static uint32_t* __scratch_y("hdmi_ptr_3") dma_lines[2] = { NULL,NULL };
+static uint32_t* __scratch_y("hdmi_ptr_4") DMA_BUF_ADDR[2];
 
 //ДМА палитра для конвертации
 //в хвосте этой памяти выделяется dma_data
@@ -226,7 +226,7 @@ static void pio_set_x(PIO pio, const int sm, uint32_t v) {
     pio_sm_exec(pio, sm, instr_mov);
 }
 
-static void dma_handler_HDMI() {
+static void __scratch_y("hdmi_driver") dma_handler_HDMI() {
     static uint32_t inx_buf_dma;
     static uint line = 0;
     struct video_mode_t mode = graphics_get_video_mode(get_video_mode());
@@ -514,6 +514,7 @@ static inline bool hdmi_init() {
     dma_channel_config cfg_dma = dma_channel_get_default_config(dma_chan);
     channel_config_set_transfer_data_size(&cfg_dma, DMA_SIZE_8);
     channel_config_set_chain_to(&cfg_dma, dma_chan_ctrl); // chain to other channel
+    channel_config_set_high_priority(&cfg_dma, true);  // Video DMA gets priority
 
     channel_config_set_read_increment(&cfg_dma, true);
     channel_config_set_write_increment(&cfg_dma, false);
@@ -537,6 +538,7 @@ static inline bool hdmi_init() {
     cfg_dma = dma_channel_get_default_config(dma_chan_ctrl);
     channel_config_set_transfer_data_size(&cfg_dma, DMA_SIZE_32);
     channel_config_set_chain_to(&cfg_dma, dma_chan); // chain to other channel
+    channel_config_set_high_priority(&cfg_dma, true);  // Video DMA gets priority
 
     channel_config_set_read_increment(&cfg_dma, false);
     channel_config_set_write_increment(&cfg_dma, false);
@@ -558,6 +560,7 @@ static inline bool hdmi_init() {
     cfg_dma = dma_channel_get_default_config(dma_chan_pal_conv);
     channel_config_set_transfer_data_size(&cfg_dma, DMA_SIZE_32);
     channel_config_set_chain_to(&cfg_dma, dma_chan_pal_conv_ctrl); // chain to other channel
+    channel_config_set_high_priority(&cfg_dma, true);  // Video DMA gets priority
 
     channel_config_set_read_increment(&cfg_dma, true);
     channel_config_set_write_increment(&cfg_dma, false);
@@ -581,6 +584,7 @@ static inline bool hdmi_init() {
     cfg_dma = dma_channel_get_default_config(dma_chan_pal_conv_ctrl);
     channel_config_set_transfer_data_size(&cfg_dma, DMA_SIZE_32);
     channel_config_set_chain_to(&cfg_dma, dma_chan_pal_conv); // chain to other channel
+    channel_config_set_high_priority(&cfg_dma, true);  // Video DMA gets priority
 
     channel_config_set_read_increment(&cfg_dma, false);
     channel_config_set_write_increment(&cfg_dma, false);

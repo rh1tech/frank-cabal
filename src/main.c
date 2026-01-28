@@ -89,14 +89,14 @@ int main(void) {
     // Voltage and clock setup MUST happen before stdio_init_all()
     // USB needs to initialize at the target clock speed
 
-    // Always set voltage explicitly for stable HDMI output
-    // Match quakegeneric: 1.6V with 100ms stabilization delay
-    vreg_disable_voltage_limit();
-    vreg_set_voltage(VREG_VOLTAGE_1_60);
+    // Overclock setup MUST happen before stdio_init_all()
+    // USB needs to initialize at the target clock speed
 #if CPU_CLOCK_MHZ > 252
+    vreg_disable_voltage_limit();
+    vreg_set_voltage(CPU_VOLTAGE);
     set_flash_timings(CPU_CLOCK_MHZ);
+    sleep_ms(10);
 #endif
-    sleep_ms(100);  // Let voltage stabilize (100ms like quakegeneric)
 
     // Set system clock before USB init
     set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, false);
