@@ -20,6 +20,10 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
+#include "cabal_fs.h"
+}
+
 // External PSRAM allocation
 extern "C" {
     void *psram_malloc(size_t size);
@@ -398,7 +402,10 @@ void OSystem_RP2350::initBackend() {
     _mutexManager = new NullMutexManager();
     _timerManager = new DefaultTimerManager();
     _eventManager = new DefaultEventManager(this);
-    _savefileManager = new DefaultSaveFileManager();
+    _savefileManager = new DefaultSaveFileManager("/cabal/saves");
+
+    // Create saves directory if it doesn't exist
+    cabal_mkdir("/cabal/saves");
 
     // Create graphics manager
     _graphicsManager = new RP2350GraphicsManager();

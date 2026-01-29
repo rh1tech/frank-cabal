@@ -57,12 +57,22 @@ uint32_t cabal_fs_free_space(void);
 // Open file for reading
 CabalFile *cabal_file_open(const char *path);
 
+// Open file for writing (creates file if it doesn't exist, truncates if it does)
+CabalFile *cabal_file_open_write(const char *path);
+
 // Close file
 void cabal_file_close(CabalFile *file);
 
 // Read from file
 // Returns number of bytes read, or -1 on error
 int32_t cabal_file_read(CabalFile *file, void *buffer, uint32_t size);
+
+// Write to file
+// Returns number of bytes written, or -1 on error
+int32_t cabal_file_write(CabalFile *file, const void *buffer, uint32_t size);
+
+// Flush file buffers to disk
+CabalFsResult cabal_file_flush(CabalFile *file);
 
 // Read entire file into newly allocated buffer
 // Caller must free the returned buffer with cabal_fs_free()
@@ -99,6 +109,12 @@ bool cabal_path_exists(const char *path);
 
 // Check if path is a directory
 bool cabal_path_is_dir(const char *path);
+
+// Create directory (and parent directories if needed)
+CabalFsResult cabal_mkdir(const char *path);
+
+// Remove file
+CabalFsResult cabal_remove(const char *path);
 
 //============================================================================
 // Memory Management

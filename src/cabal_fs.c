@@ -122,6 +122,20 @@ static struct CabalFile *alloc_file_handle(void) {
     return NULL;
 }
 
+// Helper to build full path
+static void build_fullpath(char *fullpath, size_t size, const char *path) {
+    if (path[0] == '/' || path[0] == '0') {
+        if (path[0] == '/') {
+            snprintf(fullpath, size, "0:%s", path);
+        } else {
+            strncpy(fullpath, path, size - 1);
+            fullpath[size - 1] = '\0';
+        }
+    } else {
+        snprintf(fullpath, size, "0:/%s", path);
+    }
+}
+
 CabalFile *cabal_file_open(const char *path) {
     if (!g_initialized || !path) return NULL;
 
@@ -131,17 +145,8 @@ CabalFile *cabal_file_open(const char *path) {
         return NULL;
     }
 
-    // Build full path (prepend "0:" if needed)
     char fullpath[512];
-    if (path[0] == '/' || path[0] == '0') {
-        if (path[0] == '/') {
-            snprintf(fullpath, sizeof(fullpath), "0:%s", path);
-        } else {
-            strncpy(fullpath, path, sizeof(fullpath) - 1);
-        }
-    } else {
-        snprintf(fullpath, sizeof(fullpath), "0:/%s", path);
-    }
+    build_fullpath(fullpath, sizeof(fullpath), path);
 
     FRESULT res = f_open(&file->fil, fullpath, FA_READ);
     if (res != FR_OK) {
@@ -149,6 +154,29 @@ CabalFile *cabal_file_open(const char *path) {
         if (res != FR_NO_FILE && res != FR_NO_PATH) {
             printf("Cabal FS: Failed to open '%s' (error=%d)\n", fullpath, res);
         }
+        return NULL;
+    }
+
+    file->valid = true;
+    return file;
+}
+
+CabalFile *cabal_file_open_write(const char *path) {
+    if (!g_initialized || !path) return NULL;
+
+    struct CabalFile *file = alloc_file_handle();
+    if (!file) {
+        printf("Cabal FS: No free file handles\n");
+        return NULL;
+    }
+
+    char fullpath[512];
+    build_fullpath(fullpath, sizeof(fullpath), path);
+
+    // Create or truncate file for writing
+    FRESULT res = f_open(&file->fil, fullpath, FA_WRITE | FA_CREATE_ALWAYS);
+    if (res != FR_OK) {
+        printf("Cabal FS: Failed to create '%s' (error=%d)\n", fullpath, res);
         return NULL;
     }
 
@@ -197,6 +225,47 @@ int32_t cabal_file_read(CabalFile *file, void *buffer, uint32_t size) {
     }
 
     return (int32_t)bytes_read;
+}
+
+int32_t cabal_file_write(CabalFile *file, const void *buffer, uint32_t size) {
+    if (!file || !file->valid || !buffer) return -1;
+
+#ifdef USE_I2S_AUDIO
+    // For large writes, chunk the operation and process audio between chunks
+    if (size > 4096) {
+        const uint8_t *src = (const uint8_t *)buffer;
+        uint32_t total_written = 0;
+        while (size > 0) {
+            uint32_t chunk = (size > 4096) ? 4096 : size;
+            UINT bytes_written;
+            FRESULT res = f_write(&file->fil, src, chunk, &bytes_written);
+            if (res != FR_OK) {
+                return (total_written > 0) ? (int32_t)total_written : -1;
+            }
+            total_written += bytes_written;
+            src += bytes_written;
+            size -= bytes_written;
+            if (bytes_written < chunk) break;  // Disk full?
+            cabal_audio_process_frame();
+        }
+        return (int32_t)total_written;
+    }
+#endif
+
+    UINT bytes_written;
+    FRESULT res = f_write(&file->fil, buffer, size, &bytes_written);
+    if (res != FR_OK) {
+        return -1;
+    }
+
+    return (int32_t)bytes_written;
+}
+
+CabalFsResult cabal_file_flush(CabalFile *file) {
+    if (!file || !file->valid) return CABAL_FS_INVALID_PARAM;
+
+    FRESULT res = f_sync(&file->fil);
+    return (res == FR_OK) ? CABAL_FS_OK : CABAL_FS_ERROR;
 }
 
 void *cabal_file_read_all(const char *path, uint32_t *size_out) {
@@ -327,15 +396,7 @@ bool cabal_path_exists(const char *path) {
     if (!g_initialized || !path) return false;
 
     char fullpath[512];
-    if (path[0] == '/' || path[0] == '0') {
-        if (path[0] == '/') {
-            snprintf(fullpath, sizeof(fullpath), "0:%s", path);
-        } else {
-            strncpy(fullpath, path, sizeof(fullpath) - 1);
-        }
-    } else {
-        snprintf(fullpath, sizeof(fullpath), "0:/%s", path);
-    }
+    build_fullpath(fullpath, sizeof(fullpath), path);
 
     FILINFO fno;
     return f_stat(fullpath, &fno) == FR_OK;
@@ -345,19 +406,34 @@ bool cabal_path_is_dir(const char *path) {
     if (!g_initialized || !path) return false;
 
     char fullpath[512];
-    if (path[0] == '/' || path[0] == '0') {
-        if (path[0] == '/') {
-            snprintf(fullpath, sizeof(fullpath), "0:%s", path);
-        } else {
-            strncpy(fullpath, path, sizeof(fullpath) - 1);
-        }
-    } else {
-        snprintf(fullpath, sizeof(fullpath), "0:/%s", path);
-    }
+    build_fullpath(fullpath, sizeof(fullpath), path);
 
     FILINFO fno;
     if (f_stat(fullpath, &fno) != FR_OK) return false;
     return (fno.fattrib & AM_DIR) != 0;
+}
+
+CabalFsResult cabal_mkdir(const char *path) {
+    if (!g_initialized || !path) return CABAL_FS_INVALID_PARAM;
+
+    char fullpath[512];
+    build_fullpath(fullpath, sizeof(fullpath), path);
+
+    FRESULT res = f_mkdir(fullpath);
+    if (res == FR_OK || res == FR_EXIST) {
+        return CABAL_FS_OK;
+    }
+    return CABAL_FS_ERROR;
+}
+
+CabalFsResult cabal_remove(const char *path) {
+    if (!g_initialized || !path) return CABAL_FS_INVALID_PARAM;
+
+    char fullpath[512];
+    build_fullpath(fullpath, sizeof(fullpath), path);
+
+    FRESULT res = f_unlink(fullpath);
+    return (res == FR_OK) ? CABAL_FS_OK : CABAL_FS_ERROR;
 }
 
 //============================================================================

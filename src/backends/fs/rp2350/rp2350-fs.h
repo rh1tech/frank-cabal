@@ -48,7 +48,7 @@ public:
 	virtual Common::String getPath() const { return _path; }
 	virtual bool isDirectory() const { return _isDirectory; }
 	virtual bool isReadable() const { return _isValid; }
-	virtual bool isWritable() const { return false; }  // Read-only for now
+	virtual bool isWritable() const { return true; }
 
 	virtual AbstractFSNode *getChild(const Common::String &n) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
@@ -88,6 +88,33 @@ public:
 	 * @return The stream, or NULL on failure
 	 */
 	static RP2350FileStream *makeFromPath(const Common::String &path);
+};
+
+/**
+ * Implementation of WriteStream for RP2350 using cabal_fs
+ */
+class RP2350WriteStream : public Common::WriteStream {
+protected:
+	void *_handle;  // CabalFile*
+	bool _err;
+
+	RP2350WriteStream(void *handle);
+
+public:
+	virtual ~RP2350WriteStream();
+
+	virtual bool err() const { return _err; }
+	virtual void clearErr() { _err = false; }
+
+	virtual uint32 write(const void *dataPtr, uint32 dataSize);
+	virtual bool flush();
+
+	/**
+	 * Create a write stream from a path.
+	 * @param path The path to create/open for writing
+	 * @return The stream, or NULL on failure
+	 */
+	static RP2350WriteStream *makeFromPath(const Common::String &path);
 };
 
 } // namespace RP2350

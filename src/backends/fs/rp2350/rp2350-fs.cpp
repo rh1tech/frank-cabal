@@ -152,9 +152,7 @@ Common::SeekableReadStream *RP2350FileSystemNode::createReadStream() {
 }
 
 Common::WriteStream *RP2350FileSystemNode::createWriteStream() {
-	// Writing not supported for now
-	warning("RP2350FileSystemNode::createWriteStream: Writing not supported");
-	return NULL;
+	return RP2350WriteStream::makeFromPath(_path);
 }
 
 //////////////////////////////////////////////////////////////
@@ -237,6 +235,51 @@ RP2350FileStream *RP2350FileStream::makeFromPath(const Common::String &path) {
 		return NULL;
 	}
 	return new RP2350FileStream(file);
+}
+
+//////////////////////////////////////////////////////////////
+// RP2350WriteStream
+//////////////////////////////////////////////////////////////
+
+RP2350WriteStream::RP2350WriteStream(void *handle)
+	: _handle(handle), _err(false) {
+}
+
+RP2350WriteStream::~RP2350WriteStream() {
+	if (_handle) {
+		cabal_file_close((CabalFile *)_handle);
+	}
+}
+
+uint32 RP2350WriteStream::write(const void *dataPtr, uint32 dataSize) {
+	if (!_handle) {
+		_err = true;
+		return 0;
+	}
+
+	int32_t bytesWritten = cabal_file_write((CabalFile *)_handle, dataPtr, dataSize);
+	if (bytesWritten < 0) {
+		_err = true;
+		return 0;
+	}
+
+	return (uint32)bytesWritten;
+}
+
+bool RP2350WriteStream::flush() {
+	if (!_handle) {
+		return false;
+	}
+	return cabal_file_flush((CabalFile *)_handle) == CABAL_FS_OK;
+}
+
+RP2350WriteStream *RP2350WriteStream::makeFromPath(const Common::String &path) {
+	CabalFile *file = cabal_file_open_write(path.c_str());
+	if (!file) {
+		warning("RP2350WriteStream::makeFromPath: Failed to create '%s'", path.c_str());
+		return NULL;
+	}
+	return new RP2350WriteStream(file);
 }
 
 } // namespace RP2350
