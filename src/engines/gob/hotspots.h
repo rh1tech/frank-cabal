@@ -95,6 +95,9 @@ public:
 	/** Evaluate hotspot changes. */
 	void evaluate();
 
+	/** Check if we're already inside evaluate() (for recursion prevention). */
+	bool isInEvaluate() const { return _inEvaluate; }
+
 	/** Return the cursor found in the hotspot to the coordinates. */
 	int16 findCursor(uint16 x, uint16 y) const;
 
