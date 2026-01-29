@@ -808,7 +808,8 @@ void Mult_v2::animate() {
 	int8 maxOrder = 0;
 	int8 *orderArray;
 	int orderArrayPos = 0;
-	int8 animIndices[150];
+	// Use static to reduce stack usage on embedded systems
+	static int8 animIndices[150];
 	int numAnims = 0;
 
 	if (!_objects)

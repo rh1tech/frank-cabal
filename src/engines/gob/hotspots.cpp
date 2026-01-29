@@ -1568,11 +1568,12 @@ void Hotspots::evaluate() {
 	_inEvaluate = true;
 	_evaluateBreak = false;
 
-	// Allocate on heap instead of stack to avoid stack overflow on embedded systems
-	InputDesc *inputs = new InputDesc[20];
-	uint16 *ids = new uint16[kHotspotCount];
-	memset(inputs, 0, sizeof(InputDesc) * 20);
-	memset(ids, 0, sizeof(uint16) * kHotspotCount);
+	// Use static arrays to avoid stack overflow on embedded systems
+	// Safe because _inEvaluate guard prevents recursion
+	static InputDesc inputs[20];
+	static uint16 ids[kHotspotCount];
+	memset(inputs, 0, sizeof(inputs));
+	memset(ids, 0, sizeof(ids));
 
 	// Push all local hotspots
 	push(0);
@@ -1722,10 +1723,6 @@ void Hotspots::evaluate() {
 				(spot.getState() == (kStateFilled | kStateType2)))
 				spot.disable();
 	}
-
-	// Free heap-allocated arrays
-	delete[] inputs;
-	delete[] ids;
 
 	// Clear recursion guard
 	_inEvaluate = false;

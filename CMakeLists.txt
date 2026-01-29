@@ -513,6 +513,10 @@ else()
     pico_enable_stdio_uart(cabal 0)
 endif()
 
+# Use custom linker script with 64KB stack (instead of default 4KB in SCRATCH_Y)
+# This is required for the GOB engine's deep call chains
+pico_set_linker_script(cabal ${CMAKE_CURRENT_LIST_DIR}/linker/memmap_cabal.ld)
+
 pico_add_extra_outputs(cabal)
 
 # Print memory usage estimate
@@ -520,7 +524,10 @@ message(STATUS "")
 message(STATUS "Memory Budget:")
 message(STATUS "  SRAM: ~520KB total")
 message(STATUS "    - Double framebuffer: ~154KB (320x240x2)")
-message(STATUS "    - Stack/DMA/Code: ~366KB")
+message(STATUS "    - Main stack: 64KB (custom linker script)")
+message(STATUS "    - DMA/Code/BSS: ~302KB")
+message(STATUS "    - SCRATCH_X: 4KB (Core 1 stack)")
+message(STATUS "    - SCRATCH_Y: 4KB (DMA buffers)")
 message(STATUS "  PSRAM: 8MB total")
 message(STATUS "    - Scratch buffers: 512KB")
 message(STATUS "    - Game zone: 3.5MB")
