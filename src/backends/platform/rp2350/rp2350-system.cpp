@@ -326,6 +326,9 @@ void OSystem_RP2350::setMouseCursor(const void *buf, uint w, uint h, int hotspot
 	_cursor.hotY = hotspotY;
 	_cursor.keycolor = keycolor;
 	_cursor.data = new byte[w * h];
+	if (!buf || !_cursor.data) {
+		return;
+	}
 	memcpy(_cursor.data, buf, w * h);
 
 	cabal_set_mouse_cursor(_cursor.data, w, h, hotspotX, hotspotY, (uint8)keycolor);

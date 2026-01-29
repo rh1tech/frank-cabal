@@ -182,6 +182,12 @@ static void draw_cursor(void) {
 }
 
 void cabal_update_screen(void) {
+    static int update_count = 0;
+    if (update_count < 5) {
+        printf("cabal_update_screen: %d\n", update_count);
+        fflush(stdout);
+        update_count++;
+    }
     update_hardware_palette();
 
     // Get the back buffer (not being displayed) for drawing
@@ -287,11 +293,15 @@ void cabal_set_mouse_pos(int x, int y) {
     g_state.cursorY = y;
 }
 
+// Static cursor buffer to avoid repeated allocations
+// Max cursor size is typically 32x32 = 1024 bytes
+static uint8_t s_cursorBuffer[32 * 32];
+
 void cabal_set_mouse_cursor(const uint8_t *data, int w, int h,
                             int hotX, int hotY, uint8_t keycolor) {
-    if (g_state.cursorData) {
-        // Note: Using PSRAM bump allocator, can't free
-    }
+    // Clamp to max supported cursor size
+    if (w > 32) w = 32;
+    if (h > 32) h = 32;
 
     g_state.cursorW = w;
     g_state.cursorH = h;
@@ -299,10 +309,9 @@ void cabal_set_mouse_cursor(const uint8_t *data, int w, int h,
     g_state.cursorHotY = hotY;
     g_state.cursorKeyColor = keycolor;
 
-    g_state.cursorData = (uint8_t *)psram_malloc(w * h);
-    if (g_state.cursorData) {
-        memcpy(g_state.cursorData, data, w * h);
-    }
+    // Use static buffer instead of allocating each time
+    g_state.cursorData = s_cursorBuffer;
+    memcpy(g_state.cursorData, data, w * h);
 }
 
 //============================================================================

@@ -198,6 +198,8 @@ Hotspots::Hotspots(GobEngine *vm) : _vm(vm) {
 	_hotspots = new Hotspot[kHotspotCount];
 
 	_shouldPush = false;
+	_inEvaluate = false;
+	_evaluateBreak = false;
 
 	_currentKey   = 0;
 	_currentIndex = 0;
@@ -471,6 +473,10 @@ bool Hotspots::isValid(uint16 key, uint16 id, uint16 index) const {
 }
 
 void Hotspots::call(uint16 offset) {
+	// Skip script execution if recursion break is signaled
+	if (_evaluateBreak)
+		return;
+
 	debugC(4, kDebugHotspots, "Calling hotspot function %d", offset);
 
 	_vm->_game->_script->call(offset);
@@ -488,7 +494,9 @@ void Hotspots::call(uint16 offset) {
 
 	_vm->_game->_script->pop();
 
-	recalculate(false);
+	// Skip recalculation if recursion break is signaled (speed up unwinding)
+	if (!_evaluateBreak)
+		recalculate(false);
 }
 
 void Hotspots::enter(uint16 index) {
@@ -693,6 +701,10 @@ bool Hotspots::checkHotspotChanged() {
 	if (isValid(_currentKey, _currentId,_currentIndex))
 		leave(_currentIndex);
 
+	// Check for recursion break signal after leave() script
+	if (_evaluateBreak)
+		return true;
+
 	_currentKey   = key;
 	_currentId    = id;
 	_currentIndex = index;
@@ -702,6 +714,10 @@ bool Hotspots::checkHotspotChanged() {
 	// Enter the new one
 	if (isValid(key, id, index))
 		enter(index);
+
+	// Check for recursion break signal after enter() script
+	if (_evaluateBreak)
+		return true;
 
 	return true;
 }
@@ -724,6 +740,10 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 
 			if (isValid(_currentKey, _currentId, _currentIndex))
 				enter(_currentIndex);
+
+			// Check for recursion break signal after enter() script
+			if (_evaluateBreak)
+				return 0;
 		}
 		_vm->_draw->animateCursor(-1);
 	}
@@ -736,7 +756,6 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 
 	uint16 key = 0;
 	while (key == 0) {
-
 		if (_vm->_inter->_terminate || _vm->shouldQuit()) {
 			if (handleMouse)
 				_vm->_draw->blitCursor();
@@ -787,7 +806,6 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 		}
 
 		if (handleMouse) {
-
 			if (_vm->_game->_mouseButtons != kMouseButtonsNone) {
 				// Mouse button pressed
 				int i = _vm->_draw->handleCurWin();
@@ -831,19 +849,31 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 					if (_currentKey != 0)
 						leave(_currentIndex);
 
+					// Check for recursion break signal after leave() script
+					if (_evaluateBreak)
+						return 0;
+
 					// No click, but do we have a move event? If so, enter that hotspot
 					_currentKey = checkMouse(kTypeMove, _currentId, _currentIndex);
 					if (isValid(_currentKey, _currentId, _currentIndex))
 						enter(_currentIndex);
+
+					// Check for recursion break signal after enter() script
+					if (_evaluateBreak)
+						return 0;
 				} else {
 					WRITE_VAR(16, (int32)i);
 					id = 0;
 					index = 0;
 					return 0;
 				}
-			} else
+			} else {
 				// No mouse button pressed, check whether the position changed at least
 				checkHotspotChanged();
+				// Check for recursion break signal
+				if (_evaluateBreak)
+					return 0;
+			}
 		}
 
 		if ((delay == -2) && (key == 0) &&
@@ -862,21 +892,17 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 		    (_vm->_game->_mouseButtons == kMouseButtonsNone)) {
 
 			// Look if we've maybe reached the timeout
-
 			uint32 curTime = _vm->_util->getTimeKey();
 			if ((curTime + delay) > startTime) {
 				// If so, return
-
 				id    = 0;
 				index = 0;
 				break;
 			}
-
 		}
 
-	// Sleep for a short amount of time
-	_vm->_util->delay(10);
-
+		// Sleep for a short amount of time
+		_vm->_util->delay(10);
 	}
 
 	return key;
@@ -1530,8 +1556,23 @@ bool Hotspots::evaluateFind(uint16 key, int16 timeVal, const uint16 *ids,
 }
 
 void Hotspots::evaluate() {
-	InputDesc inputs[20];
-	uint16 ids[kHotspotCount];
+	// Recursion guard for embedded systems with limited stack
+	// Signal outer evaluate() to break and let it handle script advancement
+	if (_inEvaluate) {
+		_evaluateBreak = true;
+		// Mark script as finished to break out of callSub() loop
+		_vm->_game->_script->setFinished(true);
+		return;
+	}
+
+	_inEvaluate = true;
+	_evaluateBreak = false;
+
+	// Allocate on heap instead of stack to avoid stack overflow on embedded systems
+	InputDesc *inputs = new InputDesc[20];
+	uint16 *ids = new uint16[kHotspotCount];
+	memset(inputs, 0, sizeof(InputDesc) * 20);
+	memset(ids, 0, sizeof(uint16) * kHotspotCount);
 
 	// Push all local hotspots
 	push(0);
@@ -1596,6 +1637,7 @@ void Hotspots::evaluate() {
 	_vm->_util->clearKeyBuf();
 
 	while ((id == 0) && !_vm->_inter->_terminate && !_vm->shouldQuit()) {
+
 		uint16 key = 0;
 		if (hasInput) {
 			// Input
@@ -1614,6 +1656,10 @@ void Hotspots::evaluate() {
 		} else
 			// Normal move or click check
 			key = check(_vm->_game->_handleMouse, -duration, id, index);
+
+		// Check if a nested evaluate() requested us to break out
+		if (_evaluateBreak)
+			break;
 
 		key = convertSpecialKey(key);
 
@@ -1636,6 +1682,10 @@ void Hotspots::evaluate() {
 		if (_hotspots[index].funcEnter != 0)
 			call(_hotspots[index].funcEnter);
 
+		// Check if a nested evaluate() requested us to break out
+		if (_evaluateBreak)
+			break;
+
 		setCurrentHotspot(0, 0);
 		id = 0;
 	}
@@ -1648,13 +1698,8 @@ void Hotspots::evaluate() {
 
 	if (!_vm->_inter->_terminate && (!finishedDuration)) {
 		uint32 funcLeave = _hotspots[index].funcLeave;
-		if (funcLeave == 0) {
-			printf("GOB Hotspots: funcLeave is 0 for index %d, skipping\n", index);
-		} else {
-			printf("GOB Hotspots: seeking to funcLeave=%lu for index %d\n",
-				(unsigned long)funcLeave, index);
+		if (funcLeave != 0)
 			_vm->_game->_script->seek(funcLeave);
-		}
 
 		_vm->_inter->storeMouse();
 		if (getCurrentHotspot() == 0) {
@@ -1678,6 +1723,12 @@ void Hotspots::evaluate() {
 				spot.disable();
 	}
 
+	// Free heap-allocated arrays
+	delete[] inputs;
+	delete[] ids;
+
+	// Clear recursion guard
+	_inEvaluate = false;
 }
 
 int16 Hotspots::findCursor(uint16 x, uint16 y) const {

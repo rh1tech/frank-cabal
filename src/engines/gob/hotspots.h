@@ -176,6 +176,8 @@ private:
 	Common::Stack<StackEntry> _stack;
 
 	bool _shouldPush;
+	bool _inEvaluate;       // Recursion guard for embedded systems with limited stack
+	bool _evaluateBreak;    // Signal to break out of evaluate() loop
 
 	uint16 _currentKey;
 	uint16 _currentIndex;
