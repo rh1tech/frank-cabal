@@ -95,8 +95,11 @@ public:
 	/** Evaluate hotspot changes. */
 	void evaluate();
 
-	/** Check if we're already inside evaluate() (for recursion prevention). */
-	bool isInEvaluate() const { return _inEvaluate; }
+	/** Check if we're at max evaluate() depth (for recursion prevention). */
+	bool isAtMaxEvaluateDepth() const { return _evaluateDepth >= kMaxEvaluateDepth; }
+
+	/** Get current evaluate() nesting depth. */
+	int getEvaluateDepth() const { return _evaluateDepth; }
 
 	/** Return the cursor found in the hotspot to the coordinates. */
 	int16 findCursor(uint16 x, uint16 y) const;
@@ -179,8 +182,10 @@ private:
 	Common::Stack<StackEntry> _stack;
 
 	bool _shouldPush;
-	bool _inEvaluate;       // Recursion guard for embedded systems with limited stack
+	int  _evaluateDepth;    // Recursion depth counter (0 = not in evaluate)
 	bool _evaluateBreak;    // Signal to break out of evaluate() loop
+
+	static const int kMaxEvaluateDepth = 3;  // Max nesting levels for menus
 
 	uint16 _currentKey;
 	uint16 _currentIndex;

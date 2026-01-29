@@ -342,14 +342,9 @@ void Inter::callSub(int16 retFlag) {
 
 		if (block == 1)
 			funcBlock(retFlag);
-		else if (block == 2) {
-			// Skip nested evaluate() calls to prevent stack overflow on embedded systems
-			if (_vm->_game->_hotspots->isInEvaluate()) {
-				_vm->_game->_script->setFinished(true);
-				break;
-			}
+		else if (block == 2)
 			_vm->_game->_hotspots->evaluate();
-		} else
+		else
 			error("Unknown block type %d in Inter::callSub()", block);
 	}
 

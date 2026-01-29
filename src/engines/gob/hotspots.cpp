@@ -201,7 +201,7 @@ Hotspots::Hotspots(GobEngine *vm) : _vm(vm) {
 	_hotspots = new Hotspot[kHotspotCount];
 
 	_shouldPush = false;
-	_inEvaluate = false;
+	_evaluateDepth = 0;
 	_evaluateBreak = false;
 
 	_currentKey   = 0;
@@ -726,12 +726,6 @@ bool Hotspots::checkHotspotChanged() {
 }
 
 uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index) {
-	static uint32_t check_call_count = 0;
-	check_call_count++;
-	if (check_call_count % 100 == 1) {
-		warning("GOB: check() called #%lu, handleMouse=%d, delay=%d", check_call_count, handleMouse, delay);
-	}
-
 	if (delay >= -1) {
 		_currentKey   = 0;
 		_currentId    = 0;
@@ -1628,27 +1622,25 @@ bool Hotspots::evaluateFind(uint16 key, int16 timeVal, const uint16 *ids,
 }
 
 void Hotspots::evaluate() {
-	warning("GOB: evaluate() ENTER");
-
 	// Recursion guard for embedded systems with limited stack
-	// Signal outer evaluate() to break and let it handle script advancement
-	if (_inEvaluate) {
-		warning("GOB: evaluate() RECURSION BLOCKED");
+	// Allow up to kMaxEvaluateDepth levels of nesting for menus to work
+	if (_evaluateDepth >= kMaxEvaluateDepth) {
 		_evaluateBreak = true;
 		// Mark script as finished to break out of callSub() loop
 		_vm->_game->_script->setFinished(true);
 		return;
 	}
 
-	_inEvaluate = true;
+	int myDepth = _evaluateDepth;
+	_evaluateDepth++;
 	_evaluateBreak = false;
 
-	// Use static arrays to avoid stack overflow on embedded systems
-	// Safe because _inEvaluate guard prevents recursion
-	static InputDesc inputs[20];
-	static uint16 ids[kHotspotCount];
-	memset(inputs, 0, sizeof(inputs));
-	memset(ids, 0, sizeof(ids));
+	// Use static arrays indexed by depth to avoid stack overflow on embedded systems
+	// Each nesting level gets its own set of arrays
+	static InputDesc inputs[kMaxEvaluateDepth][20];
+	static uint16 ids[kMaxEvaluateDepth][kHotspotCount];
+	memset(inputs[myDepth], 0, sizeof(inputs[myDepth]));
+	memset(ids[myDepth], 0, sizeof(ids[myDepth]));
 
 	// Push all local hotspots
 	push(0);
@@ -1703,7 +1695,7 @@ void Hotspots::evaluate() {
 
 	// Adding new hotspots
 	for (uint16 i = 0; i < count; i++)
-		evaluateNew(i, ids, inputs, inputId, hasInput, inputCount);
+		evaluateNew(i, ids[myDepth], inputs[myDepth], inputId, hasInput, inputCount);
 
 	// Recalculate all hotspots if requested
 	if (needRecalculation)
@@ -1720,7 +1712,7 @@ void Hotspots::evaluate() {
 
 			uint16 curInput = 0;
 
-			key = handleInputs(duration, inputCount, curInput, inputs, id, index);
+			key = handleInputs(duration, inputCount, curInput, inputs[myDepth], id, index);
 
 			// Notify the script of the current input index
 			WRITE_VAR(17 + 38, curInput);
@@ -1740,7 +1732,7 @@ void Hotspots::evaluate() {
 		key = convertSpecialKey(key);
 
 		// Try to find a fitting hotspot
-		evaluateFind(key, timeVal, ids, leaveWindowIndex, hotspotIndex1, hotspotIndex2, endIndex,
+		evaluateFind(key, timeVal, ids[myDepth], leaveWindowIndex, hotspotIndex1, hotspotIndex2, endIndex,
 				duration, id, index, finishedDuration);
 
 		if (finishedDuration)
@@ -1752,7 +1744,7 @@ void Hotspots::evaluate() {
 
 		_vm->_inter->storeMouse();
 
-		setCurrentHotspot(ids, id);
+		setCurrentHotspot(ids[myDepth], id);
 
 		// Enter it
 		if (_hotspots[index].funcEnter != 0)
@@ -1767,7 +1759,7 @@ void Hotspots::evaluate() {
 	}
 
 	if ((id & 0xFFF) == inputId)
-		matchInputStrings(inputs);
+		matchInputStrings(inputs[myDepth]);
 
 	if (_vm->_game->_handleMouse == 1)
 		_vm->_draw->blitCursor();
@@ -1781,7 +1773,7 @@ void Hotspots::evaluate() {
 		if (getCurrentHotspot() == 0) {
 			// No hotspot currently handled, now we'll handle the newly found one
 
-			setCurrentHotspot(ids, id);
+			setCurrentHotspot(ids[myDepth], id);
 		}
 	} else
 		_vm->_game->_script->setFinished(true);
@@ -1799,9 +1791,8 @@ void Hotspots::evaluate() {
 				spot.disable();
 	}
 
-	// Clear recursion guard
-	_inEvaluate = false;
-	warning("GOB: evaluate() EXIT");
+	// Decrement recursion depth
+	_evaluateDepth--;
 }
 
 int16 Hotspots::findCursor(uint16 x, uint16 y) const {
