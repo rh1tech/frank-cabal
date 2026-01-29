@@ -202,6 +202,8 @@ void Resources::unload(bool del) {
 
 		delete[] _totData;
 		delete[] _imData;
+		delete[] _extData;
+		delete[] _exData;
 
 		_fileBase.clear();
 		_totFile.clear();
@@ -217,6 +219,10 @@ void Resources::unload(bool del) {
 	_totSize = 0;
 	_imData = 0;
 	_imSize = 0;
+	_extData = 0;
+	_extSize = 0;
+	_exData = 0;
+	_exSize = 0;
 }
 
 bool Resources::isLoaded() const {
@@ -338,6 +344,21 @@ bool Resources::loadEXTResourceTable() {
 		item.width &= 0x7FFF;
 	}
 
+	// Cache the entire EXT file in PSRAM for fast access
+	_extSize = stream->size();
+	if (_extSize > 0) {
+		_extData = new byte[_extSize];
+		stream->seek(0);
+		if (stream->read(_extData, _extSize) != _extSize) {
+			delete[] _extData;
+			_extData = 0;
+			_extSize = 0;
+			printf("GOB: Failed to cache EXT file '%s' (%u bytes)\n", _extFile.c_str(), _extSize);
+		} else {
+			printf("GOB: Cached EXT file '%s' (%u bytes) to PSRAM\n", _extFile.c_str(), _extSize);
+		}
+	}
+
 	delete stream;
 	return true;
 }
@@ -447,6 +468,24 @@ bool Resources::loadEXFile() {
 	if (!_vm->_dataIO->hasFile(_exFile)) {
 		_exFile.clear();
 		return true;
+	}
+
+	// Cache the entire EX file in PSRAM for fast access
+	Common::SeekableReadStream *stream = _vm->_dataIO->getFile(_exFile);
+	if (stream) {
+		_exSize = stream->size();
+		if (_exSize > 0) {
+			_exData = new byte[_exSize];
+			if (stream->read(_exData, _exSize) != _exSize) {
+				delete[] _exData;
+				_exData = 0;
+				_exSize = 0;
+				printf("GOB: Failed to cache EX file '%s' (%u bytes)\n", _exFile.c_str(), _exSize);
+			} else {
+				printf("GOB: Cached EX file '%s' (%u bytes) to PSRAM\n", _exFile.c_str(), _exSize);
+			}
+		}
+		delete stream;
 	}
 
 	return true;
@@ -738,6 +777,25 @@ byte *Resources::getIMData(TOTResourceItem &totItem) const {
 }
 
 byte *Resources::getEXTData(EXTResourceItem &extItem, uint32 &size) const {
+	// Use cached EXT data if available (much faster than SD card reads)
+	if (_extData && _extSize > 0) {
+		// Validate offset and size
+		if (_vm->hasResourceSizeWorkaround())
+			size = MIN<uint32>(size, _extSize - extItem.offset);
+
+		if ((extItem.offset + size) > _extSize) {
+			warning("EXT resource out of bounds: offset=%d size=%d extSize=%d",
+				extItem.offset, size, _extSize);
+			return 0;
+		}
+
+		// Allocate and copy from cached data
+		byte *data = new byte[extItem.packed ? (size + 2) : size];
+		memcpy(data, _extData + extItem.offset, size);
+		return data;
+	}
+
+	// Fallback to reading from SD card
 	Common::SeekableReadStream *stream = _vm->_dataIO->getFile(_extFile);
 	if (!stream)
 		return 0;
@@ -763,6 +821,25 @@ byte *Resources::getEXTData(EXTResourceItem &extItem, uint32 &size) const {
 }
 
 byte *Resources::getEXData(EXTResourceItem &extItem, uint32 &size) const {
+	// Use cached EX data if available (much faster than SD card reads)
+	if (_exData && _exSize > 0) {
+		// Validate offset and size
+		if (_vm->hasResourceSizeWorkaround())
+			size = MIN<uint32>(size, _exSize - extItem.offset);
+
+		if ((extItem.offset + size) > _exSize) {
+			warning("EX resource out of bounds: offset=%d size=%d exSize=%d",
+				extItem.offset, size, _exSize);
+			return 0;
+		}
+
+		// Allocate and copy from cached data
+		byte *data = new byte[extItem.packed ? (size + 2) : size];
+		memcpy(data, _exData + extItem.offset, size);
+		return data;
+	}
+
+	// Fallback to reading from SD card
 	Common::SeekableReadStream *stream = _vm->_dataIO->getFile(_exFile);
 	if (!stream)
 		return 0;

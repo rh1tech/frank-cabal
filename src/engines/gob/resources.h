@@ -179,6 +179,12 @@ private:
 	byte *_imData;
 	uint32 _imSize;
 
+	// Cached EXT/EX file data (loaded once, served from PSRAM)
+	byte *_extData;
+	uint32 _extSize;
+	byte *_exData;
+	uint32 _exSize;
+
 	bool _hasLOM;
 	int32 _totResStart;
 
