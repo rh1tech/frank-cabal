@@ -140,6 +140,7 @@ Resources::~Resources() {
 }
 
 bool Resources::load(const Common::String &fileName) {
+	printf("GOB: Resources::load('%s')\n", fileName.c_str());
 	unload();
 
 	_totFile = TOTFile::createFileName(fileName, _hasLOM);
@@ -156,6 +157,7 @@ bool Resources::load(const Common::String &fileName) {
 
 	bool hasTOTRes = loadTOTResourceTable();
 	bool hasEXTRes = loadEXTResourceTable();
+	printf("GOB: Resources::load() - hasTOTRes=%d, hasEXTRes=%d\n", hasTOTRes, hasEXTRes);
 
 	if (!hasTOTRes) {
 		delete _totResourceTable;
@@ -222,25 +224,36 @@ bool Resources::isLoaded() const {
 }
 
 bool Resources::loadTOTResourceTable() {
+	printf("GOB: loadTOTResourceTable() for '%s'\n", _totFile.c_str());
 	TOTFile totFile(_vm);
 
-	if (!totFile.load(_totFile))
+	if (!totFile.load(_totFile)) {
+		printf("GOB: loadTOTResourceTable() - totFile.load() FAILED\n");
 		return false;
+	}
 
 	TOTFile::Properties totProps;
-	if (!totFile.getProperties(totProps))
+	if (!totFile.getProperties(totProps)) {
+		printf("GOB: loadTOTResourceTable() - getProperties() FAILED\n");
 		return false;
+	}
 
 	Common::SeekableReadStream *stream = totFile.getStream();
-	if (!stream)
+	if (!stream) {
+		printf("GOB: loadTOTResourceTable() - getStream() returned NULL\n");
 		return false;
+	}
 
+	printf("GOB: loadTOTResourceTable() - scriptEnd=%u, resOffset=0x%x\n",
+		totProps.scriptEnd, totProps.resourcesOffset);
 	_totResStart = totProps.scriptEnd;
 
 	if ((totProps.resourcesOffset == 0xFFFFFFFF) ||
-	    (totProps.resourcesOffset == 0))
+	    (totProps.resourcesOffset == 0)) {
 		// No resources here
+		printf("GOB: loadTOTResourceTable() - no resources (offset=0x%x)\n", totProps.resourcesOffset);
 		return false;
+	}
 
 	_totResourceTable = new TOTResourceTable;
 

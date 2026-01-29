@@ -1,8 +1,8 @@
 add_library(ps2kbd STATIC)
 
 target_sources(ps2kbd PRIVATE
-${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.cpp
-${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.h
+    ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.h
     ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_wrapper.cpp
     ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_wrapper.h
 )
@@ -17,19 +17,17 @@ else()
 endif()
 
 target_include_directories(ps2kbd PUBLIC
-  ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}
 )
 
 target_include_directories(ps2kbd PRIVATE
     ../../src
-    ../../src/doomgeneric/doomgeneric
-    ../../src/fatfs
 )
 
 pico_generate_pio_header(ps2kbd 
-${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.pio
+    ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr.pio
 )
 
 pico_generate_pio_header(ps2kbd 
-${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr2.pio
+    ${CMAKE_CURRENT_LIST_DIR}/ps2kbd_mrmltr2.pio
 )

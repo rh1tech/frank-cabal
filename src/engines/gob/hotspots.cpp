@@ -29,6 +29,9 @@
 #include "gob/script.h"
 #include "gob/inter.h"
 
+// PROFILING: Track check() function timing
+#include "pico/time.h"
+
 namespace Gob {
 
 Hotspots::Hotspot::Hotspot() {
@@ -723,6 +726,12 @@ bool Hotspots::checkHotspotChanged() {
 }
 
 uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index) {
+	static uint32_t check_call_count = 0;
+	check_call_count++;
+	if (check_call_count % 100 == 1) {
+		warning("GOB: check() called #%lu, handleMouse=%d, delay=%d", check_call_count, handleMouse, delay);
+	}
+
 	if (delay >= -1) {
 		_currentKey   = 0;
 		_currentId    = 0;
@@ -755,7 +764,20 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 	_vm->_video->waitRetrace();
 
 	uint16 key = 0;
+
+	// PROFILING: Track time in check() loop
+	static uint32_t total_loop_time = 0;
+	static uint32_t total_hotspot_time = 0;
+	static uint32_t total_animate_time = 0;
+	static uint32_t total_scroll_time = 0;
+	static uint32_t total_checkkeys_time = 0;
+	static uint32_t total_click_time = 0;
+	static uint32_t total_delay_time = 0;
+	static int loop_count = 0;
+
 	while (key == 0) {
+		uint32_t loop_start = time_us_32();
+
 		if (_vm->_inter->_terminate || _vm->shouldQuit()) {
 			if (handleMouse)
 				_vm->_draw->blitCursor();
@@ -763,23 +785,31 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 		}
 
 		// Anything changed?
+		uint32_t t1 = time_us_32();
 		checkHotspotChanged();
+		total_hotspot_time += time_us_32() - t1;
 
 		// Update display
 		if (!_vm->_draw->_noInvalidated) {
+			uint32_t t2 = time_us_32();
 			if (handleMouse)
 				_vm->_draw->animateCursor(-1);
 			else
 				_vm->_draw->blitInvalidated();
 			_vm->_video->waitRetrace();
+			total_animate_time += time_us_32() - t2;
 		}
 
+		uint32_t t3 = time_us_32();
 		if (handleMouse)
 			_vm->_game->evaluateScroll();
+		total_scroll_time += time_us_32() - t3;
 
 		// Update keyboard and mouse state
+		uint32_t t4 = time_us_32();
 		key = _vm->_game->checkKeys(&_vm->_global->_inter_mouseX,
 				&_vm->_global->_inter_mouseY, &_vm->_game->_mouseButtons, handleMouse);
+		total_checkkeys_time += time_us_32() - t4;
 
 		if (!handleMouse && (_vm->_game->_mouseButtons != kMouseButtonsNone)) {
 			// We don't want any mouse input but got one => Wait till it went away
@@ -808,6 +838,7 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 		if (handleMouse) {
 			if (_vm->_game->_mouseButtons != kMouseButtonsNone) {
 				// Mouse button pressed
+				uint32_t click_start = time_us_32();
 				int i = _vm->_draw->handleCurWin();
 
 				if (!i) {
@@ -822,9 +853,12 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 
 					// Which region was clicked?
 					key = checkMouse(kTypeClick, id, index);
+					total_click_time += time_us_32() - click_start;
 
 					if ((key != 0) || (id != 0)) {
 						// Got a valid region
+						warning("PROFILE: VALID CLICK on hotspot id=%d, key=%d at t=%lu us",
+						        id, key, time_us_32());
 
 						if ( (handleMouse & 1) &&
 							  ((delay <= 0) || (_vm->_game->_mouseButtons == kMouseButtonsNone)))
@@ -839,6 +873,14 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 
 						_currentKey = 0;
 						break;
+					} else {
+						// Click didn't hit a valid hotspot
+						static uint32_t last_miss_log = 0;
+						uint32_t now = time_us_32();
+						if (now - last_miss_log > 1000000) {  // Log once per second
+							warning("PROFILE: Click MISSED hotspot at t=%lu us", now);
+							last_miss_log = now;
+						}
 					}
 
 					if (handleMouse & 4)
@@ -902,7 +944,37 @@ uint16 Hotspots::check(uint8 handleMouse, int16 delay, uint16 &id, uint16 &index
 		}
 
 		// Sleep for a short amount of time
+		uint32_t t5 = time_us_32();
 		_vm->_util->delay(10);
+		total_delay_time += time_us_32() - t5;
+
+		// PROFILING: End of loop iteration
+		total_loop_time += time_us_32() - loop_start;
+		loop_count++;
+
+		// Heartbeat every iteration to detect stuck
+		static uint32_t last_heartbeat = 0;
+		uint32_t now = time_us_32();
+		if (now - last_heartbeat > 2000000) {  // Every 2 seconds
+			warning("HEARTBEAT: check() loop alive, iteration %d", loop_count);
+			last_heartbeat = now;
+		}
+
+		// Report every 20 iterations
+		if (loop_count >= 20) {
+			warning("PROFILE check(): 20 loops: total=%lu us (avg %lu), hotspot=%lu, animate=%lu, scroll=%lu, checkkeys=%lu, click=%lu, delay=%lu",
+			        total_loop_time, total_loop_time/20,
+			        total_hotspot_time, total_animate_time, total_scroll_time,
+			        total_checkkeys_time, total_click_time, total_delay_time);
+			total_loop_time = 0;
+			total_hotspot_time = 0;
+			total_animate_time = 0;
+			total_scroll_time = 0;
+			total_checkkeys_time = 0;
+			total_click_time = 0;
+			total_delay_time = 0;
+			loop_count = 0;
+		}
 	}
 
 	return key;
@@ -1556,9 +1628,12 @@ bool Hotspots::evaluateFind(uint16 key, int16 timeVal, const uint16 *ids,
 }
 
 void Hotspots::evaluate() {
+	warning("GOB: evaluate() ENTER");
+
 	// Recursion guard for embedded systems with limited stack
 	// Signal outer evaluate() to break and let it handle script advancement
 	if (_inEvaluate) {
+		warning("GOB: evaluate() RECURSION BLOCKED");
 		_evaluateBreak = true;
 		// Mark script as finished to break out of callSub() loop
 		_vm->_game->_script->setFinished(true);
@@ -1726,6 +1801,7 @@ void Hotspots::evaluate() {
 
 	// Clear recursion guard
 	_inEvaluate = false;
+	warning("GOB: evaluate() EXIT");
 }
 
 int16 Hotspots::findCursor(uint16 x, uint16 y) const {

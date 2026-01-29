@@ -1,5 +1,5 @@
-// PS/2 Keyboard Wrapper for Cabal
-// Interfaces ps2kbd driver with Cabal's event system
+// PS/2 Keyboard Wrapper for Test Application
+// Based on murmdoom implementation
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "board_config.h"
@@ -7,147 +7,101 @@
 #include "ps2kbd_mrmltr.h"
 #include <queue>
 
-// Generic key codes for Cabal (matching Common::KeyCode where possible)
-#define CABAL_KEY_BACKSPACE  8
-#define CABAL_KEY_TAB        9
-#define CABAL_KEY_RETURN     13
-#define CABAL_KEY_ESCAPE     27
-#define CABAL_KEY_SPACE      32
-
-#define CABAL_KEY_F1         282
-#define CABAL_KEY_F2         283
-#define CABAL_KEY_F3         284
-#define CABAL_KEY_F4         285
-#define CABAL_KEY_F5         286
-#define CABAL_KEY_F6         287
-#define CABAL_KEY_F7         288
-#define CABAL_KEY_F8         289
-#define CABAL_KEY_F9         290
-#define CABAL_KEY_F10        291
-#define CABAL_KEY_F11        292
-#define CABAL_KEY_F12        293
-
-#define CABAL_KEY_UP         273
-#define CABAL_KEY_DOWN       274
-#define CABAL_KEY_RIGHT      275
-#define CABAL_KEY_LEFT       276
-#define CABAL_KEY_INSERT     277
-#define CABAL_KEY_HOME       278
-#define CABAL_KEY_END        279
-#define CABAL_KEY_PAGEUP     280
-#define CABAL_KEY_PAGEDOWN   281
-#define CABAL_KEY_DELETE     127
-
-#define CABAL_KEY_LSHIFT     304
-#define CABAL_KEY_RSHIFT     303
-#define CABAL_KEY_LCTRL      306
-#define CABAL_KEY_RCTRL      305
-#define CABAL_KEY_LALT       308
-#define CABAL_KEY_RALT       307
-
 struct KeyEvent {
     int pressed;
-    int keycode;
-    int modifier;
+    unsigned char key;
+    uint8_t hid_code;  // Raw HID code for display
 };
 
 static std::queue<KeyEvent> event_queue;
-static int current_modifiers = 0;
 
-// HID to Cabal keycode mapping
-static int hid_to_cabal(uint8_t code) {
-    // Letters a-z
-    if (code >= 0x04 && code <= 0x1D) return 'a' + (code - 0x04);
-
-    // Numbers 1-9, 0
+// HID to ASCII mapping
+static unsigned char hid_to_ascii(uint8_t code, bool shift) {
+    // Letters a-z (0x04-0x1D)
+    if (code >= 0x04 && code <= 0x1D) {
+        char c = 'a' + (code - 0x04);
+        return shift ? (c - 32) : c;  // Uppercase if shift
+    }
+    
+    // Numbers 1-9, 0 (0x1E-0x27)
     if (code >= 0x1E && code <= 0x27) {
+        if (shift) {
+            // Shifted number row symbols
+            const char shifted[] = "!@#$%^&*()";
+            return shifted[code - 0x1E];
+        }
         if (code == 0x27) return '0';
         return '1' + (code - 0x1E);
     }
-
+    
     // Special keys
     switch (code) {
-        case 0x28: return CABAL_KEY_RETURN;
-        case 0x29: return CABAL_KEY_ESCAPE;
-        case 0x2A: return CABAL_KEY_BACKSPACE;
-        case 0x2B: return CABAL_KEY_TAB;
-        case 0x2C: return CABAL_KEY_SPACE;
-
-        case 0x2D: return '-';
-        case 0x2E: return '=';
-        case 0x2F: return '[';
-        case 0x30: return ']';
-        case 0x31: return '\\';
-        case 0x33: return ';';
-        case 0x34: return '\'';
-        case 0x35: return '`';
-        case 0x36: return ',';
-        case 0x37: return '.';
-        case 0x38: return '/';
-
-        // Arrow keys
-        case 0x4F: return CABAL_KEY_RIGHT;
-        case 0x50: return CABAL_KEY_LEFT;
-        case 0x51: return CABAL_KEY_DOWN;
-        case 0x52: return CABAL_KEY_UP;
-
-        // Navigation keys
-        case 0x49: return CABAL_KEY_INSERT;
-        case 0x4A: return CABAL_KEY_HOME;
-        case 0x4B: return CABAL_KEY_PAGEUP;
-        case 0x4C: return CABAL_KEY_DELETE;
-        case 0x4D: return CABAL_KEY_END;
-        case 0x4E: return CABAL_KEY_PAGEDOWN;
+        case 0x28: return '\n';     // Enter
+        case 0x29: return 0x1B;     // Escape
+        case 0x2A: return '\b';     // Backspace
+        case 0x2B: return '\t';     // Tab
+        case 0x2C: return ' ';      // Space
+        case 0x2D: return shift ? '_' : '-';
+        case 0x2E: return shift ? '+' : '=';
+        case 0x2F: return shift ? '{' : '[';
+        case 0x30: return shift ? '}' : ']';
+        case 0x31: return shift ? '|' : '\\';
+        case 0x33: return shift ? ':' : ';';
+        case 0x34: return shift ? '"' : '\'';
+        case 0x35: return shift ? '~' : '`';
+        case 0x36: return shift ? '<' : ',';
+        case 0x37: return shift ? '>' : '.';
+        case 0x38: return shift ? '?' : '/';
+        
+        // Arrow keys - return special codes
+        case 0x4F: return 0x80;  // Right arrow
+        case 0x50: return 0x81;  // Left arrow
+        case 0x51: return 0x82;  // Down arrow
+        case 0x52: return 0x83;  // Up arrow
+        
+        // Function keys F1-F12
+        case 0x3A: return 0xF1;  // F1
+        case 0x3B: return 0xF2;  // F2
+        case 0x3C: return 0xF3;  // F3
+        case 0x3D: return 0xF4;  // F4
+        case 0x3E: return 0xF5;  // F5
+        case 0x3F: return 0xF6;  // F6
+        case 0x40: return 0xF7;  // F7
+        case 0x41: return 0xF8;  // F8
+        case 0x42: return 0xF9;  // F9
+        case 0x43: return 0xFA;  // F10
+        case 0x44: return 0xFB;  // F11
+        case 0x45: return 0xFC;  // F12
     }
-
-    // Function keys F1-F12
-    if (code >= 0x3A && code <= 0x45) {
-        return CABAL_KEY_F1 + (code - 0x3A);
-    }
-
+    
     return 0;
 }
 
-static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev) {
-    // Track modifiers
-    current_modifiers = 0;
-    if (curr->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT))
-        current_modifiers |= 1;  // Shift
-    if (curr->modifier & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL))
-        current_modifiers |= 2;  // Ctrl
-    if (curr->modifier & (KEYBOARD_MODIFIER_LEFTALT | KEYBOARD_MODIFIER_RIGHTALT))
-        current_modifiers |= 4;  // Alt
+static bool shift_held = false;
 
-    // Check modifier changes
+static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev) {
+    // Track shift state
+    shift_held = (curr->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
+    
+    // Check modifiers
     uint8_t changed_mods = curr->modifier ^ prev->modifier;
     if (changed_mods) {
-        if (changed_mods & KEYBOARD_MODIFIER_LEFTSHIFT) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_LEFTSHIFT) != 0;
-            event_queue.push({pressed, CABAL_KEY_LSHIFT, current_modifiers});
+        // Report modifier changes
+        if (changed_mods & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) {
+            int pressed = (curr->modifier & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
+            event_queue.push({pressed, 0xE1, 0xE1});  // Shift
         }
-        if (changed_mods & KEYBOARD_MODIFIER_RIGHTSHIFT) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_RIGHTSHIFT) != 0;
-            event_queue.push({pressed, CABAL_KEY_RSHIFT, current_modifiers});
+        if (changed_mods & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL)) {
+            int pressed = (curr->modifier & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL)) != 0;
+            event_queue.push({pressed, 0xE0, 0xE0});  // Ctrl
         }
-        if (changed_mods & KEYBOARD_MODIFIER_LEFTCTRL) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_LEFTCTRL) != 0;
-            event_queue.push({pressed, CABAL_KEY_LCTRL, current_modifiers});
-        }
-        if (changed_mods & KEYBOARD_MODIFIER_RIGHTCTRL) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_RIGHTCTRL) != 0;
-            event_queue.push({pressed, CABAL_KEY_RCTRL, current_modifiers});
-        }
-        if (changed_mods & KEYBOARD_MODIFIER_LEFTALT) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_LEFTALT) != 0;
-            event_queue.push({pressed, CABAL_KEY_LALT, current_modifiers});
-        }
-        if (changed_mods & KEYBOARD_MODIFIER_RIGHTALT) {
-            int pressed = (curr->modifier & KEYBOARD_MODIFIER_RIGHTALT) != 0;
-            event_queue.push({pressed, CABAL_KEY_RALT, current_modifiers});
+        if (changed_mods & (KEYBOARD_MODIFIER_LEFTALT | KEYBOARD_MODIFIER_RIGHTALT)) {
+            int pressed = (curr->modifier & (KEYBOARD_MODIFIER_LEFTALT | KEYBOARD_MODIFIER_RIGHTALT)) != 0;
+            event_queue.push({pressed, 0xE2, 0xE2});  // Alt
         }
     }
 
-    // Check for newly pressed keys
+    // Check for new key presses
     for (int i = 0; i < 6; i++) {
         if (curr->keycode[i] != 0) {
             bool found = false;
@@ -158,13 +112,13 @@ static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev
                 }
             }
             if (!found) {
-                int k = hid_to_cabal(curr->keycode[i]);
-                if (k) event_queue.push({1, k, current_modifiers});
+                unsigned char ascii = hid_to_ascii(curr->keycode[i], shift_held);
+                event_queue.push({1, ascii, curr->keycode[i]});
             }
         }
     }
 
-    // Check for released keys
+    // Check for key releases
     for (int i = 0; i < 6; i++) {
         if (prev->keycode[i] != 0) {
             bool found = false;
@@ -175,8 +129,8 @@ static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev
                 }
             }
             if (!found) {
-                int k = hid_to_cabal(prev->keycode[i]);
-                if (k) event_queue.push({0, k, current_modifiers});
+                unsigned char ascii = hid_to_ascii(prev->keycode[i], shift_held);
+                event_queue.push({0, ascii, prev->keycode[i]});
             }
         }
     }
@@ -185,6 +139,7 @@ static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev
 static Ps2Kbd_Mrmltr* kbd = nullptr;
 
 extern "C" void ps2kbd_init(void) {
+    // PS2 keyboard driver expects base_gpio as CLK, and base_gpio+1 as DATA
     kbd = new Ps2Kbd_Mrmltr(pio0, PS2_PIN_CLK, key_handler);
     kbd->init_gpio();
 }
@@ -193,25 +148,21 @@ extern "C" void ps2kbd_tick(void) {
     if (kbd) kbd->tick();
 }
 
-extern "C" int ps2kbd_get_key(int* pressed, int* keycode) {
+extern "C" int ps2kbd_get_key(int* pressed, unsigned char* key) {
     if (event_queue.empty()) return 0;
     KeyEvent e = event_queue.front();
     event_queue.pop();
     *pressed = e.pressed;
-    *keycode = e.keycode;
+    *key = e.key;
     return 1;
 }
 
-extern "C" int ps2kbd_get_key_ext(int* pressed, int* keycode, int* modifiers) {
+extern "C" int ps2kbd_get_key_ext(int* pressed, unsigned char* key, uint8_t* hid_code) {
     if (event_queue.empty()) return 0;
     KeyEvent e = event_queue.front();
     event_queue.pop();
     *pressed = e.pressed;
-    *keycode = e.keycode;
-    *modifiers = e.modifier;
+    *key = e.key;
+    *hid_code = e.hid_code;
     return 1;
-}
-
-extern "C" int ps2kbd_get_modifiers(void) {
-    return current_modifiers;
 }

@@ -28,6 +28,13 @@
 #include "gob/util.h"
 #include "gob/global.h"
 #include "gob/dataio.h"
+
+// PROFILING: Use pico timing
+#include "pico/time.h"
+extern "C" uint32_t cabal_profile_get_last_click_time(void);
+static uint32_t g_engine_last_click_received = 0;
+static uint32_t g_engine_processInput_calls = 0;
+static uint32_t g_engine_last_processInput_time = 0;
 #include "gob/draw.h"
 #include "gob/game.h"
 #include "gob/video.h"
@@ -71,9 +78,22 @@ void Util::notifyPaused(uint32 duration) {
 }
 
 void Util::delay(uint16 msecs) {
-	// Process audio during delays to prevent underruns
+	uint32_t actual_delay = msecs / _vm->_global->_speedFactor;
+
+	// Process input DURING the delay to maintain responsiveness
+	// Break delay into small chunks and poll input between them
+	uint32_t remaining = actual_delay;
+	while (remaining > 0) {
+		uint32_t chunk = (remaining > 2) ? 2 : remaining;  // Max 2ms per chunk
+		g_system->delayMillis(chunk);
+		remaining -= chunk;
+
+		// Process input to keep mouse responsive
+		processInput();
+	}
+
+	// Update screen once at the end
 	g_system->updateScreen();
-	g_system->delayMillis(msecs / _vm->_global->_speedFactor);
 }
 
 void Util::longDelay(uint16 msecs) {
@@ -81,7 +101,9 @@ void Util::longDelay(uint16 msecs) {
 	do {
 		_vm->_video->waitRetrace();
 		processInput();
-		delay(15);
+		// Reduced delay from 15ms to 5ms for better input responsiveness
+		g_system->delayMillis(5);
+		processInput();
 	} while (!_vm->shouldQuit() &&
 	         ((g_system->getMillis() * _vm->_global->_speedFactor) < time));
 }
@@ -97,9 +119,15 @@ void Util::processInput(bool scroll) {
 	int16 x = 0, y = 0;
 	bool hasMove = false;
 
+	// PROFILING: Track processInput calls
+	uint32_t processInput_start = time_us_32();
+	g_engine_processInput_calls++;
+
 	_vm->_vidPlayer->updateLive();
 
+	int events_processed = 0;
 	while (eventMan->pollEvent(event)) {
+		events_processed++;
 		switch (event.type) {
 		case Common::EVENT_MOUSEMOVE:
 			hasMove = true;
@@ -108,6 +136,14 @@ void Util::processInput(bool scroll) {
 			break;
 		case Common::EVENT_LBUTTONDOWN:
 			_mouseButtons = (MouseButtons) (((uint32) _mouseButtons) | ((uint32) kMouseButtonsLeft));
+			// PROFILING: Track when engine receives click
+			{
+				uint32_t now = time_us_32();
+				uint32_t click_generated = cabal_profile_get_last_click_time();
+				uint32_t latency = now - click_generated;
+				warning("PROFILE: Engine received CLICK, latency=%lu us (%.1f ms)", latency, latency/1000.0f);
+				g_engine_last_click_received = now;
+			}
 			break;
 		case Common::EVENT_RBUTTONDOWN:
 			_mouseButtons = (MouseButtons) (((uint32) _mouseButtons) | ((uint32) kMouseButtonsRight));
@@ -160,6 +196,19 @@ void Util::processInput(bool scroll) {
 		// in the impacted TOT file so that the second screen animation is not broken.
 		if ((_vm->getGameType() == kGameTypeGob3) && _vm->isCurrentTot("EMAP1008.TOT"))
 			_vm->_game->evaluateScroll();
+	}
+
+	// PROFILING: Report timing every 100 calls
+	uint32_t processInput_elapsed = time_us_32() - processInput_start;
+	static uint32_t total_processInput_time = 0;
+	static int processInput_count = 0;
+	total_processInput_time += processInput_elapsed;
+	processInput_count++;
+	if (processInput_count >= 100) {
+		warning("PROFILE: processInput 100 calls took %lu us (avg %lu us), events=%d last",
+		        total_processInput_time, total_processInput_time/100, events_processed);
+		total_processInput_time = 0;
+		processInput_count = 0;
 	}
 }
 
@@ -399,12 +448,23 @@ void Util::waitMouseRelease(char drawMouse) {
 	int16 mouseX;
 	int16 mouseY;
 
+	// PROFILING: Track how long button is held
+	uint32_t wait_start = time_us_32();
+	int wait_loops = 0;
+
 	_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, drawMouse);
 	while (buttons != 0) {
+		wait_loops++;
 		if (drawMouse != 0)
 			_vm->_draw->animateCursor(2);
 		delay(10);
 		_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, drawMouse);
+	}
+
+	uint32_t wait_elapsed = time_us_32() - wait_start;
+	if (wait_loops > 0) {
+		warning("PROFILE: waitMouseRelease took %lu us (%d loops, %.1f ms)",
+		        wait_elapsed, wait_loops, wait_elapsed / 1000.0f);
 	}
 }
 

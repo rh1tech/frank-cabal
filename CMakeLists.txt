@@ -63,8 +63,8 @@ add_subdirectory(src/fatfs)
 
 # Add driver subdirectories
 add_subdirectory(drivers/sdcard)
+add_subdirectory(drivers/ps2)
 add_subdirectory(drivers/ps2kbd)
-add_subdirectory(drivers/ps2mouse)
 
 # USB HID drivers (optional - when enabled, USB serial is disabled)
 if(USB_HID_ENABLED)
@@ -405,8 +405,8 @@ target_include_directories(cabal PRIVATE
     src/fatfs
     drivers
     drivers/sdcard
+    drivers/ps2
     drivers/ps2kbd
-    drivers/ps2mouse
     drivers/audio
 )
 
@@ -491,8 +491,8 @@ target_link_libraries(cabal
     hardware_flash
     fatfs
     sdcard
+    ps2_driver
     ps2kbd
-    ps2mouse
     drivers
 )
 

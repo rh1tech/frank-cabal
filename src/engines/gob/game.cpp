@@ -23,6 +23,12 @@
 #include "common/endian.h"
 #include "common/str.h"
 
+// PROFILING
+#include "pico/time.h"
+extern "C" uint32_t cabal_profile_get_last_click_time(void);
+static uint32_t g_checkKeys_calls = 0;
+static uint32_t g_last_checkKeys_report = 0;
+
 #include "gob/gob.h"
 #include "gob/game.h"
 #include "gob/global.h"
@@ -608,7 +614,9 @@ void Game::playTot(int16 function) {
 					WRITE_VAR(59, 0);
 			}
 
+			printf("GOB: Entering callSub(2) for script execution\n");
 			_vm->_inter->callSub(2);
+			printf("GOB: Returned from callSub(2)\n");
 
 			if (!_totToLoad.empty())
 				_vm->_inter->_terminate = 0;
@@ -799,6 +807,9 @@ void Game::evaluateScroll() {
 int16 Game::checkKeys(int16 *pMouseX, int16 *pMouseY,
 		MouseButtons *pButtons, char handleMouse) {
 
+	uint32_t checkKeys_start = time_us_32();
+	g_checkKeys_calls++;
+
 	_vm->_util->processInput(true);
 
 	if (_vm->_mult->_multData && _vm->_inter->_variables &&
@@ -821,8 +832,27 @@ int16 Game::checkKeys(int16 *pMouseX, int16 *pMouseY,
 	if (pMouseX && pMouseY && pButtons) {
 		_vm->_util->getMouseState(pMouseX, pMouseY, pButtons);
 
+		// PROFILING: Track when buttons are read with click active
+		if (*pButtons != kMouseButtonsNone) {
+			uint32_t now = time_us_32();
+			uint32_t click_time = cabal_profile_get_last_click_time();
+			if (click_time > 0) {
+				uint32_t latency = now - click_time;
+				warning("PROFILE: checkKeys sees button, latency from click=%lu us (%.1f ms)",
+				        latency, latency/1000.0f);
+			}
+		}
+
 		if (*pButtons == kMouseButtonsBoth)
 			*pButtons = kMouseButtonsNone;
+	}
+
+	// PROFILING: Report checkKeys rate every second
+	uint32_t now = time_us_32();
+	if (now - g_last_checkKeys_report >= 1000000) {
+		warning("PROFILE: checkKeys called %lu times/sec", g_checkKeys_calls);
+		g_checkKeys_calls = 0;
+		g_last_checkKeys_report = now;
 	}
 
 	return _vm->_util->checkKey();

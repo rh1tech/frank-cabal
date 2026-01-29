@@ -4,15 +4,72 @@
  */
 
 #include "backends/platform/rp2350/rp2350-minimal.h"
+#include "board_config.h"
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "hardware/pio.h"
 #include <stdio.h>
 #include <string.h>
 
 #ifdef USB_HID_ENABLED
 #include "usbkbd_wrapper.h"
 #include "usbmouse_wrapper.h"
+#else
+#include "ps2.h"
+#include "ps2kbd_wrapper.h"
 #endif
+
+//============================================================================
+// Hard Fault Handler - catches crashes and prints diagnostic info
+//============================================================================
+
+extern "C" void isr_hardfault(void) __attribute__((naked));
+extern "C" void isr_hardfault(void) {
+    __asm volatile (
+        "mrs r0, msp\n"           // Get main stack pointer
+        "b hard_fault_handler_c\n"
+    );
+}
+
+extern "C" void hard_fault_handler_c(uint32_t *stack) {
+    // Stack frame: r0, r1, r2, r3, r12, lr, pc, xpsr
+    uint32_t r0  = stack[0];
+    uint32_t r1  = stack[1];
+    uint32_t r2  = stack[2];
+    uint32_t r3  = stack[3];
+    uint32_t r12 = stack[4];
+    uint32_t lr  = stack[5];
+    uint32_t pc  = stack[6];
+    uint32_t psr = stack[7];
+
+    printf("\n\n*** HARD FAULT ***\n");
+    printf("PC:  0x%08lx (crashed here)\n", pc);
+    printf("LR:  0x%08lx (called from)\n", lr);
+    printf("PSR: 0x%08lx\n", psr);
+    printf("R0:  0x%08lx  R1: 0x%08lx\n", r0, r1);
+    printf("R2:  0x%08lx  R3: 0x%08lx\n", r2, r3);
+    printf("R12: 0x%08lx\n", r12);
+    printf("SP:  0x%08lx\n", (uint32_t)stack);
+
+    // Check for stack overflow
+    extern char __StackLimit;
+    if ((uint32_t)stack < (uint32_t)&__StackLimit) {
+        printf("*** STACK OVERFLOW DETECTED ***\n");
+    }
+
+    // Print memory around crash
+    printf("Memory at PC-8: ");
+    for (int i = -2; i < 4; i++) {
+        printf("%08lx ", ((uint32_t*)pc)[i]);
+    }
+    printf("\n");
+
+    // Hang with LED blinking pattern
+    while (1) {
+        for (volatile int i = 0; i < 500000; i++);
+        printf(".");
+    }
+}
 
 //============================================================================
 // Internal State
@@ -70,10 +127,20 @@ void cabal_system_init(void) {
     printf("  Initializing USB HID mouse...\n");
     usbmouse_init();
 #else
-    printf("  Initializing PS/2 keyboard...\n");
+    printf("  Initializing PS/2 keyboard (pio0)...\n");
     ps2kbd_init();
-    printf("  Initializing PS/2 mouse...\n");
-    ps2mouse_wrapper_init();
+
+    // Initialize PS/2 mouse using pio1 (keyboard uses pio0)
+    printf("  Initializing PS/2 mouse (pio1)...\n");
+    if (ps2_mouse_pio_init(pio1, PS2_MOUSE_CLK)) {
+        if (ps2_mouse_init_device()) {
+            printf("  PS/2 mouse initialized (interrupt-driven streaming)\n");
+        } else {
+            printf("  PS/2 mouse device init failed\n");
+        }
+    } else {
+        printf("  PS/2 mouse PIO init failed\n");
+    }
 #endif
 
     // Default mouse position
@@ -160,20 +227,25 @@ static void draw_cursor(void) {
     if (!g_state.cursorData || !g_state.framebuffer) return;
     if (!g_state.cursorVisible) return;
 
+    // Validate cursor dimensions to prevent buffer overflows
+    int cursorW = g_state.cursorW;
+    int cursorH = g_state.cursorH;
+    if (cursorW <= 0 || cursorW > 32 || cursorH <= 0 || cursorH > 32) return;
+
     // Calculate vertical offset for letterboxing (320x200 in 320x240)
     int yOffset = (240 - g_state.screenHeight) / 2;
     int drawX = g_state.cursorX - g_state.cursorHotX;
     int drawY = g_state.cursorY - g_state.cursorHotY + yOffset;
 
-    for (int cy = 0; cy < g_state.cursorH; cy++) {
+    for (int cy = 0; cy < cursorH; cy++) {
         int screenY = drawY + cy;
         if (screenY < 0 || screenY >= 240) continue;
 
-        for (int cx = 0; cx < g_state.cursorW; cx++) {
+        for (int cx = 0; cx < cursorW; cx++) {
             int screenX = drawX + cx;
             if (screenX < 0 || screenX >= 320) continue;
 
-            uint8_t pixel = g_state.cursorData[cy * g_state.cursorW + cx];
+            uint8_t pixel = g_state.cursorData[cy * cursorW + cx];
             if (pixel != g_state.cursorKeyColor) {
                 g_state.framebuffer[screenY * 320 + screenX] = pixel;
             }
@@ -182,12 +254,10 @@ static void draw_cursor(void) {
 }
 
 void cabal_update_screen(void) {
+    static uint32_t total_update_time = 0;
     static int update_count = 0;
-    if (update_count < 5) {
-        printf("cabal_update_screen: %d\n", update_count);
-        fflush(stdout);
-        update_count++;
-    }
+    uint32_t start = time_us_32();
+
     update_hardware_palette();
 
     // Get the back buffer (not being displayed) for drawing
@@ -234,6 +304,18 @@ void cabal_update_screen(void) {
 
     // Swap buffers - display what we just drew, get new back buffer for next frame
     cabal_swap_buffers();
+
+    // Timing stats
+    uint32_t elapsed = time_us_32() - start;
+    total_update_time += elapsed;
+    update_count++;
+    if (update_count == 60) {
+        printf("PERF: 60 screen updates took %lu us (avg %lu us = %lu fps)\n",
+               total_update_time, total_update_time / 60,
+               60000000 / total_update_time);
+        total_update_time = 0;
+        update_count = 0;
+    }
 }
 
 void cabal_set_palette(const uint8_t *colors, int start, int num) {
@@ -402,14 +484,32 @@ bool cabal_poll_event(CabalEvent *event) {
 }
 
 #else
+// Profiling globals - accessible from engine
+static uint32_t g_last_click_time = 0;
+static uint32_t g_click_count = 0;
+static uint32_t g_motion_event_count = 0;
+static uint32_t g_last_motion_time = 0;
+
+extern "C" {
+    uint32_t cabal_profile_get_last_click_time(void) { return g_last_click_time; }
+    uint32_t cabal_profile_get_click_count(void) { return g_click_count; }
+}
+
 // PS/2 event polling
 bool cabal_poll_event(CabalEvent *event) {
-    // Poll input devices
+    static uint32_t total_poll_time = 0;
+    static uint32_t total_mouse_time = 0;
+    static int poll_count = 0;
+    static uint32_t motion_events_this_second = 0;
+    static uint32_t last_fps_report = 0;
+    uint32_t start = time_us_32();
+
+    // Poll keyboard
     ps2kbd_tick();
-    ps2mouse_wrapper_tick();
 
     // Check for keyboard events
-    int pressed, keycode;
+    int pressed;
+    unsigned char keycode;
     if (ps2kbd_get_key(&pressed, &keycode)) {
         event->type = pressed ? CABAL_EVENT_KEYDOWN : CABAL_EVENT_KEYUP;
         event->kbd.keycode = keycode;
@@ -421,78 +521,115 @@ bool cabal_poll_event(CabalEvent *event) {
             event->kbd.ascii = 0;
         }
 
-        // Get modifier flags
-        int mods = ps2kbd_get_modifiers();
+        // Modifier flags are tracked separately by keyboard driver
         event->kbd.flags = 0;
-        if (mods & 1) event->kbd.flags |= CABAL_MOD_SHIFT;
-        if (mods & 2) event->kbd.flags |= CABAL_MOD_CTRL;
-        if (mods & 4) event->kbd.flags |= CABAL_MOD_ALT;
 
         return true;
     }
 
-    // Check for mouse button events FIRST (higher priority than motion)
-    uint8_t buttons = ps2mouse_get_buttons();
-    if (buttons != g_state.prevMouseButtons) {
-        // Left button
-        if ((buttons & 1) != (g_state.prevMouseButtons & 1)) {
-            event->type = (buttons & 1) ? CABAL_EVENT_LBUTTONDOWN : CABAL_EVENT_LBUTTONUP;
+    // Get mouse state (Core 1 handles polling in background - this is non-blocking)
+    int16_t dx = 0, dy = 0;
+    int8_t wheel = 0;
+    uint8_t buttons = g_state.prevMouseButtons;
+
+    uint32_t mouse_start = time_us_32();
+    ps2_mouse_get_state(&dx, &dy, &wheel, &buttons);
+    uint32_t mouse_elapsed = time_us_32() - mouse_start;
+    total_mouse_time += mouse_elapsed;
+
+    if (buttons != g_state.prevMouseButtons || dx != 0 || dy != 0) {
+        // ALWAYS update cursor position FIRST before any event
+        // This prevents losing motion data when button events occur
+        if (dx != 0 || dy != 0) {
+            // Clamp extreme values (spurious data protection)
+            const int16_t MAX_DELTA = 127;
+            if (dx > MAX_DELTA) dx = MAX_DELTA;
+            if (dx < -MAX_DELTA) dx = -MAX_DELTA;
+            if (dy > MAX_DELTA) dy = MAX_DELTA;
+            if (dy < -MAX_DELTA) dy = -MAX_DELTA;
+
+            // Apply mouse motion (1:1, invert Y for screen coords)
+            g_state.mouseX += dx;
+            g_state.mouseY -= dy;
+
+            // Clamp to screen bounds
+            if (g_state.mouseX < 0) g_state.mouseX = 0;
+            if (g_state.mouseX >= g_state.screenWidth) g_state.mouseX = g_state.screenWidth - 1;
+            if (g_state.mouseY < 0) g_state.mouseY = 0;
+            if (g_state.mouseY >= g_state.screenHeight) g_state.mouseY = g_state.screenHeight - 1;
+
+            // Update cursor position
+            g_state.cursorX = g_state.mouseX;
+            g_state.cursorY = g_state.mouseY;
+        }
+
+        // Check for button changes (return button events with updated position)
+        if (buttons != g_state.prevMouseButtons) {
+            // Left button
+            if ((buttons & 1) != (g_state.prevMouseButtons & 1)) {
+                event->type = (buttons & 1) ? CABAL_EVENT_LBUTTONDOWN : CABAL_EVENT_LBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~1) | (buttons & 1);
+                // PROFILING: Record click time
+                if (buttons & 1) {
+                    g_last_click_time = time_us_32();
+                    g_click_count++;
+                    printf("PROFILE: CLICK #%lu at t=%lu us, pos=(%d,%d)\n",
+                           g_click_count, g_last_click_time, g_state.mouseX, g_state.mouseY);
+                }
+                return true;
+            }
+            // Right button
+            if ((buttons & 2) != (g_state.prevMouseButtons & 2)) {
+                event->type = (buttons & 2) ? CABAL_EVENT_RBUTTONDOWN : CABAL_EVENT_RBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~2) | (buttons & 2);
+                return true;
+            }
+            // Middle button
+            if ((buttons & 4) != (g_state.prevMouseButtons & 4)) {
+                event->type = (buttons & 4) ? CABAL_EVENT_MBUTTONDOWN : CABAL_EVENT_MBUTTONUP;
+                event->mouse.x = g_state.mouseX;
+                event->mouse.y = g_state.mouseY;
+                g_state.prevMouseButtons = (g_state.prevMouseButtons & ~4) | (buttons & 4);
+                return true;
+            }
+            g_state.prevMouseButtons = buttons;
+        }
+
+        // Return motion event if there was movement
+        if (dx != 0 || dy != 0) {
+            event->type = CABAL_EVENT_MOUSEMOVE;
             event->mouse.x = g_state.mouseX;
             event->mouse.y = g_state.mouseY;
-            g_state.prevMouseButtons = (g_state.prevMouseButtons & ~1) | (buttons & 1);
+            // PROFILING: Count motion events for FPS
+            motion_events_this_second++;
+            uint32_t now = time_us_32();
+            if (now - last_fps_report >= 1000000) {  // Every second
+                printf("PROFILE: Motion FPS=%lu events/sec\n", motion_events_this_second);
+                motion_events_this_second = 0;
+                last_fps_report = now;
+            }
             return true;
         }
-        // Right button
-        if ((buttons & 2) != (g_state.prevMouseButtons & 2)) {
-            event->type = (buttons & 2) ? CABAL_EVENT_RBUTTONDOWN : CABAL_EVENT_RBUTTONUP;
-            event->mouse.x = g_state.mouseX;
-            event->mouse.y = g_state.mouseY;
-            g_state.prevMouseButtons = (g_state.prevMouseButtons & ~2) | (buttons & 2);
-            return true;
-        }
-        // Middle button
-        if ((buttons & 4) != (g_state.prevMouseButtons & 4)) {
-            event->type = (buttons & 4) ? CABAL_EVENT_MBUTTONDOWN : CABAL_EVENT_MBUTTONUP;
-            event->mouse.x = g_state.mouseX;
-            event->mouse.y = g_state.mouseY;
-            g_state.prevMouseButtons = (g_state.prevMouseButtons & ~4) | (buttons & 4);
-            return true;
-        }
-        g_state.prevMouseButtons = buttons;
-    }
-
-    // Check for mouse motion
-    int16_t dx, dy;
-    if (ps2mouse_get_motion(&dx, &dy)) {
-        // Clamp extreme values only (spurious data protection)
-        const int16_t MAX_DELTA = 127;
-        if (dx > MAX_DELTA) dx = MAX_DELTA;
-        if (dx < -MAX_DELTA) dx = -MAX_DELTA;
-        if (dy > MAX_DELTA) dy = MAX_DELTA;
-        if (dy < -MAX_DELTA) dy = -MAX_DELTA;
-
-        // Apply mouse motion with 2x sensitivity for 320x200 screen
-        g_state.mouseX += dx * 2;
-        g_state.mouseY -= dy * 2;  // Invert Y for screen coordinates
-
-        // Clamp to screen bounds
-        if (g_state.mouseX < 0) g_state.mouseX = 0;
-        if (g_state.mouseX >= g_state.screenWidth) g_state.mouseX = g_state.screenWidth - 1;
-        if (g_state.mouseY < 0) g_state.mouseY = 0;
-        if (g_state.mouseY >= g_state.screenHeight) g_state.mouseY = g_state.screenHeight - 1;
-
-        event->type = CABAL_EVENT_MOUSEMOVE;
-        event->mouse.x = g_state.mouseX;
-        event->mouse.y = g_state.mouseY;
-
-        // Update cursor position
-        g_state.cursorX = g_state.mouseX;
-        g_state.cursorY = g_state.mouseY;
-
-        return true;
     }
 
     event->type = CABAL_EVENT_NONE;
+
+    // Timing stats
+    uint32_t elapsed = time_us_32() - start;
+    total_poll_time += elapsed;
+    poll_count++;
+    if (poll_count == 100) {
+        printf("PERF: 100 polls took %lu us (avg %lu), mouse %lu us\n",
+               total_poll_time, total_poll_time / 100, total_mouse_time);
+        total_poll_time = 0;
+        total_mouse_time = 0;
+        poll_count = 0;
+    }
+
     return false;
 }
 #endif

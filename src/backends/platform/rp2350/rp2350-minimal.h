@@ -18,17 +18,12 @@
 extern "C" {
 #endif
 
-// PS/2 Keyboard
+// PS/2 Keyboard (from ps2kbd driver)
 void ps2kbd_init(void);
 void ps2kbd_tick(void);
-int ps2kbd_get_key(int* pressed, int* keycode);
-int ps2kbd_get_modifiers(void);
+int ps2kbd_get_key(int* pressed, unsigned char* key);
 
-// PS/2 Mouse
-void ps2mouse_wrapper_init(void);
-void ps2mouse_wrapper_tick(void);
-int ps2mouse_get_motion(int16_t* dx, int16_t* dy);
-uint8_t ps2mouse_get_buttons(void);
+// PS/2 Mouse declarations are in ps2.h (included when !USB_HID_ENABLED)
 
 // HDMI Graphics
 void graphics_init(int mode);
