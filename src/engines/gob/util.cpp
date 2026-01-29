@@ -418,7 +418,8 @@ void Util::forceMouseUp(bool onlyWhenSynced) {
 
 void Util::clearPalette() {
 	int16 i;
-	byte colors[768];
+	// Use static buffer to reduce stack usage on embedded systems
+	static byte colors[768];
 
 	_vm->validateVideoMode(_vm->_global->_videoMode);
 

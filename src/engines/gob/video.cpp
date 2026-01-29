@@ -378,7 +378,8 @@ void Video::setPalElem(int16 index, char red, char green, char blue,
 }
 
 void Video::setPalette(PalDesc *palDesc) {
-	byte pal[768];
+	// Use static buffer to reduce stack usage on embedded systems
+	static byte pal[768];
 	int16 numcolors;
 
 	_vm->validateVideoMode(_vm->_global->_videoMode);
@@ -393,7 +394,8 @@ void Video::setPalette(PalDesc *palDesc) {
 
 void Video::setFullPalette(PalDesc *palDesc) {
 	if (_vm->_global->_setAllPalette) {
-		byte pal[768];
+		// Use static buffer to reduce stack usage on embedded systems
+		static byte pal[768];
 		Color *colors = palDesc->vgaPal;
 
 		for (int i = 0; i < 256; i++) {
