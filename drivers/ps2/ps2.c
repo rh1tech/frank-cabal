@@ -707,12 +707,11 @@ bool ps2_mouse_get_state(int16_t *dx, int16_t *dy, int8_t *wheel, uint8_t *butto
     uint irq_num = (ps2_pio == pio0) ? PIO0_IRQ_1 : PIO1_IRQ_1;
     irq_set_enabled(irq_num, false);
 
-    // FAILSAFE: If button has been pressed for > 150ms without release,
-    // force it to released state (handles stuck button bug)
-    // Normal clicks are < 150ms, so this provides quick response
+    // FAILSAFE: If button has been pressed for > 2s without release,
+    // force it to released state (handles stuck button from sync errors)
     if (mouse_state.buttons != 0 && mouse_button_press_time != 0) {
         uint32_t button_held_us = time_us_32() - mouse_button_press_time;
-        if (button_held_us > 150000) {  // 150ms timeout
+        if (button_held_us > 2000000) {  // 2 second timeout
             printf("PS2: FAILSAFE - Button stuck for %lu ms, forcing release\n",
                    button_held_us / 1000);
             mouse_state.buttons = 0;
