@@ -547,17 +547,17 @@ extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
 
     // Try to launch a GOB (Gobliins) game if found on SD card
-    // Check for explicit version directories first (gob1, gob2, gob3)
-    if (cabal_path_exists("/cabal/gob3")) {
-        printf("Cabal: Found GOB3 directory, launching Gobliiins 3...\n");
-        if (launchGOBGameWithVersion("/cabal/gob3", 3)) {
+    // Check for explicit version directories first
+    if (cabal_path_exists("/cabal/gob2")) {
+        printf("Cabal: Found GOB2 directory, launching Gobliiins 2...\n");
+        if (launchGOBGameWithVersion("/cabal/gob2", 2)) {
             printf("Cabal: GOB game completed.\n");
             return 0;
         }
     }
-    if (cabal_path_exists("/cabal/gob2")) {
-        printf("Cabal: Found GOB2 directory, launching Gobliiins 2...\n");
-        if (launchGOBGameWithVersion("/cabal/gob2", 2)) {
+    if (cabal_path_exists("/cabal/gob3")) {
+        printf("Cabal: Found GOB3 directory, launching Gobliiins 3...\n");
+        if (launchGOBGameWithVersion("/cabal/gob3", 3)) {
             printf("Cabal: GOB game completed.\n");
             return 0;
         }
