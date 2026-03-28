@@ -373,6 +373,9 @@ set(BACKEND_SOURCES
     src/backends/fs/abstract-fs.cpp
     src/backends/fs/rp2350/rp2350-fs.cpp
     src/backends/fs/rp2350/rp2350-fs-factory.cpp
+    src/backends/saves/default/default-saves.cpp
+    src/backends/saves/savefile.cpp
+    src/common/zlib.cpp
     src/backends/events/default/default-events.cpp
     src/backends/timer/default/default-timer.cpp
     src/backends/platform/rp2350/rp2350-minimal.cpp

@@ -26,7 +26,7 @@
 extern "C" {
     void ps2kbd_init(void);
     void ps2kbd_tick(void);
-    int ps2kbd_get_key(int* pressed, int* keycode);
+    int ps2kbd_get_key(int* pressed, unsigned char* keycode);
     int ps2kbd_get_modifiers(void);
 
     void ps2mouse_wrapper_init(void);

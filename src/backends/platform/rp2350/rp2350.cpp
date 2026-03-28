@@ -404,9 +404,6 @@ void OSystem_RP2350::initBackend() {
     _eventManager = new DefaultEventManager(this);
     _savefileManager = new DefaultSaveFileManager("/cabal/saves");
 
-    // Create saves directory if it doesn't exist
-    cabal_mkdir("/cabal/saves");
-
     // Create graphics manager
     _graphicsManager = new RP2350GraphicsManager();
 
@@ -497,13 +494,16 @@ bool OSystem_RP2350::pollEvent(Common::Event &event) {
     ps2mouse_wrapper_tick();
 
     // Check for keyboard events
-    int pressed, keycode;
+    int pressed;
+    unsigned char keycode;
     if (ps2kbd_get_key(&pressed, &keycode)) {
         event.type = pressed ? Common::EVENT_KEYDOWN : Common::EVENT_KEYUP;
         event.kbd.keycode = convertKeyCode(keycode);
 
         // Get ASCII value
         if (keycode >= 32 && keycode < 127) {
+            event.kbd.ascii = keycode;
+        } else if (keycode == 8 || keycode == 9 || keycode == 13 || keycode == 27) {
             event.kbd.ascii = keycode;
         } else {
             event.kbd.ascii = 0;

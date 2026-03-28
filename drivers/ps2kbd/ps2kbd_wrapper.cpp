@@ -36,7 +36,7 @@ static unsigned char hid_to_ascii(uint8_t code, bool shift) {
     
     // Special keys
     switch (code) {
-        case 0x28: return '\n';     // Enter
+        case 0x28: return '\r';     // Enter (CR, keycode 13)
         case 0x29: return 0x1B;     // Escape
         case 0x2A: return '\b';     // Backspace
         case 0x2B: return '\t';     // Tab

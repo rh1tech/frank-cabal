@@ -536,6 +536,9 @@ extern "C" void cabal_init(void) {
         printf("Cabal: Filesystem init failed (error=%d)\n", fsResult);
     }
 
+    // Create save directory (must be after filesystem init)
+    cabal_mkdir("/cabal/saves");
+
     printf("Cabal: System ready.\n");
 }
 

@@ -9,6 +9,7 @@
 #include "backends/events/default/default-events.h"
 #include "backends/timer/default/default-timer.h"
 #include "backends/audiocd/rp2350/rp2350-audiocd.h"
+#include "backends/saves/default/default-saves.h"
 #include "common/config-manager.h"
 #include "audio/mixer_intern.h"
 
@@ -95,6 +96,9 @@ void OSystem_RP2350::initBackend() {
 
 	// Create AudioCD manager (stub - no CD audio on embedded)
 	_audiocdManager = new RP2350AudioCDManager();
+
+	// Create save file manager
+	_savefileManager = new DefaultSaveFileManager("/cabal/saves");
 
 	printf("OSystem_RP2350: Backend initialized.\n");
 	OSystem::initBackend();
