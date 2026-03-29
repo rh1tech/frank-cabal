@@ -107,7 +107,7 @@ int main(void) {
     // Wait for USB serial connection with countdown
     printf("\n\n");
     printf("================================\n");
-    printf("  Cabal v%s\n", CABAL_VERSION);
+    printf("  Frank-Cabal v%s\n", CABAL_VERSION);
     printf("  ScummVM for RP2350\n");
     printf("================================\n");
     printf("\n");

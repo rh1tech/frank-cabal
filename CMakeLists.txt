@@ -44,7 +44,7 @@ if(EXISTS ${PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
     include(${PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
 endif()
 
-project(cabal C CXX ASM)
+project(frank-cabal C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -615,7 +615,7 @@ set(BACKEND_SOURCES
 )
 
 # Main executable
-add_executable(cabal
+add_executable(frank-cabal
     src/main.c
     src/cabal_main.cpp
     src/cabal_new.cpp
@@ -637,7 +637,7 @@ add_executable(cabal
     ${BACKEND_SOURCES}
 )
 
-target_include_directories(cabal PRIVATE
+target_include_directories(frank-cabal PRIVATE
     src
     src/engines
     src/fatfs
@@ -651,7 +651,7 @@ target_include_directories(cabal PRIVATE
 # ScummVM include paths - src is the root for all ScummVM headers
 # Headers use paths like "common/system.h", "backends/base-backend.h", etc.
 
-target_compile_definitions(cabal PRIVATE
+target_compile_definitions(frank-cabal PRIVATE
     BOARD_${BOARD_VARIANT}
     CPU_CLOCK_MHZ=${CPU_SPEED}
     CPU_VOLTAGE=${CPU_VOLTAGE}
@@ -699,7 +699,7 @@ target_compile_definitions(cabal PRIVATE
 
 # Set peripheral pins based on board variant
 if(BOARD_VARIANT STREQUAL "M1")
-    target_compile_definitions(cabal PRIVATE
+    target_compile_definitions(frank-cabal PRIVATE
         # I2S Audio
         PICO_AUDIO_I2S_DATA_PIN=26
         PICO_AUDIO_I2S_CLOCK_PIN_BASE=27
@@ -710,7 +710,7 @@ if(BOARD_VARIANT STREQUAL "M1")
         SDCARD_PIN_SPI0_MISO=4
     )
 elseif(BOARD_VARIANT STREQUAL "M2")
-    target_compile_definitions(cabal PRIVATE
+    target_compile_definitions(frank-cabal PRIVATE
         # I2S Audio
         PICO_AUDIO_I2S_DATA_PIN=9
         PICO_AUDIO_I2S_CLOCK_PIN_BASE=10
@@ -723,7 +723,7 @@ elseif(BOARD_VARIANT STREQUAL "M2")
 endif()
 
 
-target_link_libraries(cabal
+target_link_libraries(frank-cabal
     pico_stdlib
     pico_multicore
     hardware_spi
@@ -741,26 +741,26 @@ target_link_libraries(cabal
 
 # Add custom I2S audio driver
 include(${CMAKE_CURRENT_LIST_DIR}/drivers/audio/CMakeLists.txt)
-target_compile_definitions(cabal PRIVATE USE_I2S_AUDIO=1)
+target_compile_definitions(frank-cabal PRIVATE USE_I2S_AUDIO=1)
 
 # USB HID configuration
 if(USB_HID_ENABLED)
     message(STATUS "USB HID enabled: Using UART for stdio")
-    target_link_libraries(cabal usbhid)
-    target_compile_definitions(cabal PRIVATE USB_HID_ENABLED=1)
-    pico_enable_stdio_usb(cabal 0)
-    pico_enable_stdio_uart(cabal 1)
+    target_link_libraries(frank-cabal usbhid)
+    target_compile_definitions(frank-cabal PRIVATE USB_HID_ENABLED=1)
+    pico_enable_stdio_usb(frank-cabal 0)
+    pico_enable_stdio_uart(frank-cabal 1)
 else()
     message(STATUS "USB Serial Console enabled for debug")
-    pico_enable_stdio_usb(cabal 1)
-    pico_enable_stdio_uart(cabal 0)
+    pico_enable_stdio_usb(frank-cabal 1)
+    pico_enable_stdio_uart(frank-cabal 0)
 endif()
 
 # Use custom linker script with 64KB stack (instead of default 4KB in SCRATCH_Y)
 # This is required for the GOB engine's deep call chains
-pico_set_linker_script(cabal ${CMAKE_CURRENT_LIST_DIR}/linker/memmap_cabal.ld)
+pico_set_linker_script(frank-cabal ${CMAKE_CURRENT_LIST_DIR}/linker/memmap_cabal.ld)
 
-pico_add_extra_outputs(cabal)
+pico_add_extra_outputs(frank-cabal)
 
 # Print memory usage estimate
 message(STATUS "")
