@@ -19,8 +19,8 @@ static uint8_t *psram_start = (uint8_t *)PSRAM_BASE;
 // Reserve 512KB for scratch buffers at the beginning
 #define SCRATCH_SIZE (512 * 1024)
 
-// Memory layout: [Scratch 512KB][Heap ~6.5MB][Temp 1MB]
-#define TEMP_SIZE (1 * 1024 * 1024)
+// Memory layout: [Scratch 512KB][Heap ~7.5MB]
+#define TEMP_SIZE 0
 #define HEAP_SIZE (PSRAM_SIZE - SCRATCH_SIZE - TEMP_SIZE)
 
 // Free-list allocator for the heap region
