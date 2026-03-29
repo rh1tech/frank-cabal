@@ -37,6 +37,9 @@ public:
 		// Could redirect to printf on embedded if desired
 	}
 
+	// Stub command handlers that engines reference
+	bool cmdExit(int argc, const char **argv) { return true; }
+
 protected:
 	// Register a command handler - simplified for embedded
 	typedef bool (*CommandProc)(int argc, const char **argv);

@@ -131,28 +131,38 @@ byte getSpecialID(const GameFlags &flags) {
 
 bool StaticResource::loadStaticResourceFile() {
 	Resource *res = _vm->resource();
+	printf("KYRA: loadStaticResourceFile - looking for '%s'\n", staticDataFilename().c_str());
 
 	if (res->isInCacheList(staticDataFilename()))
 		return true;
 
+	printf("KYRA: not cached, listing files...\n");
 	Common::ArchiveMemberList kyraDatFiles;
 	res->listFiles(staticDataFilename(), kyraDatFiles);
+	printf("KYRA: found %d matches\n", (int)kyraDatFiles.size());
 
 	bool foundWorkingKyraDat = false;
 	for (Common::ArchiveMemberList::iterator i = kyraDatFiles.begin(); i != kyraDatFiles.end(); ++i) {
+		printf("KYRA: opening KYRA.DAT stream...\n");
 		Common::SeekableReadStream *file = (*i)->createReadStream();
+		printf("KYRA: checkKyraDat...\n");
 		if (!checkKyraDat(file)) {
+			printf("KYRA: checkKyraDat FAILED\n");
 			delete file;
 			continue;
 		}
+		printf("KYRA: checkKyraDat OK\n");
 
 		delete file; file = 0;
 
+		printf("KYRA: loadPakFile...\n");
 		if (!res->loadPakFile(staticDataFilename(), *i))
 			continue;
 
+		printf("KYRA: tryKyraDatLoad...\n");
 		if (tryKyraDatLoad()) {
 			foundWorkingKyraDat = true;
+			printf("KYRA: KYRA.DAT loaded OK\n");
 			break;
 		}
 
@@ -171,14 +181,23 @@ bool StaticResource::loadStaticResourceFile() {
 
 bool StaticResource::tryKyraDatLoad() {
 	Common::SeekableReadStream *index = _vm->resource()->createReadStream("INDEX");
-	if (!index)
+	if (!index) {
+		printf("KYRA: tryKyraDatLoad - INDEX not found!\n");
 		return false;
+	}
 
 	const uint32 version = index->readUint32BE();
+	printf("KYRA: tryKyraDatLoad - INDEX found, version=%u expected=%u\n", version, RESFILE_VERSION);
 
 	if (version != RESFILE_VERSION) {
-		delete index;
-		return false;
+		// Accept older versions (85+) for Kyrandia 1 compatibility
+		if (version >= 85 && version <= RESFILE_VERSION) {
+			printf("KYRA: accepting older KYRA.DAT version %u (expected %u)\n", version, RESFILE_VERSION);
+		} else {
+			printf("KYRA: version mismatch! got %u, need %u\n", version, RESFILE_VERSION);
+			delete index;
+			return false;
+		}
 	}
 
 	const uint32 includedGames = index->readUint32BE();
@@ -195,10 +214,15 @@ bool StaticResource::tryKyraDatLoad() {
 	const byte lang = getLanguageID(flags) & 0xF;
 
 	const uint16 gameDef = (game << 12) | (platform << 8) | (special << 4) | (lang << 0);
+	printf("KYRA: tryKyraDatLoad gameDef=0x%04X (game=%d plat=%d spec=%d lang=%d) version=%u games=%u\n",
+		gameDef, game, platform, special, lang, version, includedGames);
 
 	bool found = false;
 	for (uint32 i = 0; i < includedGames; ++i) {
-		if (index->readUint16BE() == gameDef) {
+		uint16 entry = index->readUint16BE();
+		if (i < 5 || entry == gameDef)
+			printf("KYRA:   [%d] 0x%04X %s\n", i, entry, entry == gameDef ? "<- MATCH" : "");
+		if (entry == gameDef) {
 			found = true;
 			break;
 		}
@@ -207,8 +231,10 @@ bool StaticResource::tryKyraDatLoad() {
 	delete index;
 	index = 0;
 
-	if (!found)
+	if (!found) {
+		printf("KYRA: gameDef 0x%04X not found in KYRA.DAT!\n", gameDef);
 		return false;
+	}
 
 	// load the ID map for our game
 	const Common::String filenamePattern = Common::String::format("0%01X%01X%01X000%01X", game, platform, special, lang);

@@ -1,26 +1,44 @@
 /* Cabal - Legacy Game Implementations
  *
- * Override C++ new/delete to use PSRAM
- * These override the Pico SDK's weak symbols in pico_cxx_options
+ * Route ALL memory allocations (malloc, new) to PSRAM.
+ * SRAM is too small for game engines with large resource files.
  */
 
 #include <cstddef>
+#include <cstring>
 #include <new>
 
 extern "C" {
 #include "psram_allocator.h"
-
-// For debugging
 int printf(const char *, ...);
+
+void *__real_malloc(size_t size) {
+    return psram_malloc(size);
 }
 
-// Strong symbols to override SDK's weak new/delete
+void *__real_calloc(size_t count, size_t size) {
+    size_t total = count * size;
+    void *ptr = psram_malloc(total);
+    if (ptr) memset(ptr, 0, total);
+    return ptr;
+}
+
+void *__real_realloc(void *ptr, size_t size) {
+    return psram_realloc(ptr, size);
+}
+
+void __real_free(void *ptr) {
+    psram_free(ptr);
+}
+
+} // extern "C"
 
 void* operator new(std::size_t size) {
     void* ptr = psram_malloc(size);
     if (!ptr) {
-        printf("new(%u) FAILED - OOM\n", (unsigned)size);
-        while(1) { } // Hang on OOM
+        printf("\n*** new(%u) FAILED ***\n", (unsigned)size);
+        psram_print_status();
+        while(1) { }
     }
     return ptr;
 }
@@ -29,18 +47,7 @@ void* operator new[](std::size_t size) {
     return operator new(size);
 }
 
-void operator delete(void* ptr) noexcept {
-    psram_free(ptr);
-}
-
-void operator delete[](void* ptr) noexcept {
-    psram_free(ptr);
-}
-
-void operator delete(void* ptr, std::size_t) noexcept {
-    psram_free(ptr);
-}
-
-void operator delete[](void* ptr, std::size_t) noexcept {
-    psram_free(ptr);
-}
+void operator delete(void* ptr) noexcept { psram_free(ptr); }
+void operator delete[](void* ptr) noexcept { psram_free(ptr); }
+void operator delete(void* ptr, std::size_t) noexcept { psram_free(ptr); }
+void operator delete[](void* ptr, std::size_t) noexcept { psram_free(ptr); }

@@ -15,11 +15,15 @@
 #include <stdlib.h>		/* with POSIX API */
 
 
+extern void *psram_malloc(size_t size);
+extern void psram_free(void *ptr);
+
 void* ff_memalloc (	/* Returns pointer to the allocated memory block (null if not enough core) */
 	UINT msize		/* Number of bytes to allocate */
 )
 {
-	void *p = malloc((size_t)msize);	/* Allocate a new memory block */
+	/* Use PSRAM directly - SRAM may be exhausted by game engine */
+	void *p = psram_malloc((size_t)msize);
 	if (!p) {
 		printf("ff_memalloc(%u) FAILED!\n", msize);
 	}
@@ -31,7 +35,7 @@ void ff_memfree (
 	void* mblock	/* Pointer to the memory block to free (no effect if null) */
 )
 {
-	free(mblock);	/* Free the memory block */
+	psram_free(mblock);
 }
 
 #endif

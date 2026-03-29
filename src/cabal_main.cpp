@@ -22,6 +22,9 @@
 // GOB Engine includes
 #include "gob/gob.h"
 
+// Kyrandia Engine includes
+#include "kyra/kyra_lok.h"
+
 // Forward declare AGIGameDescription since it's defined in detection.cpp
 namespace Agi {
 struct AGIGameDescription {
@@ -44,6 +47,12 @@ struct GOBGameDescription {
     uint32 demoIndex;
 };
 }
+
+// Forward declare KYRAGameDescription
+struct KYRAGameDescription {
+    ADGameDescription desc;
+    Kyra::GameFlags flags;
+};
 
 #include <stdio.h>
 #include <string.h>
@@ -542,12 +551,92 @@ extern "C" void cabal_init(void) {
     printf("Cabal: System ready.\n");
 }
 
+// Kyrandia game launcher
+static bool launchKyrandiaGame(const char *gamePath) {
+    printf("KYRA: Launching game from %s\n", gamePath);
+
+    ConfMan.set("path", gamePath);
+    ConfMan.setActiveDomain("cabal-kyra");
+
+    // Audio/config defaults
+    ConfMan.setInt("music_volume", 192);
+    ConfMan.setInt("sfx_volume", 192);
+    ConfMan.setInt("speech_volume", 192);
+    ConfMan.setBool("mute", false);
+    ConfMan.setBool("speech_mute", false);
+    ConfMan.setBool("sfx_mute", false);
+    ConfMan.setBool("music_mute", false);
+    ConfMan.setInt("autosave_period", 0);
+    ConfMan.setBool("enable_unsupported_game_warning", false);
+    ConfMan.set("music_driver", "adlib");
+    ConfMan.set("gm_device", "null");
+    ConfMan.set("mt32_device", "null");
+    ConfMan.setBool("native_mt32", false);
+    ConfMan.setBool("subtitles", true);
+    ConfMan.setInt("talkspeed", 60);
+    ConfMan.set("language", "en");
+    ConfMan.set("gfx_mode", "normal");
+    ConfMan.setBool("aspect_ratio", false);
+
+    printf("KYRA: Loading plugins...\n");
+    PluginManager::instance().loadAllPlugins();
+
+    // Add game directory to search path
+    Common::FSNode gameDir(gamePath);
+    if (gameDir.exists() && gameDir.isDirectory()) {
+        SearchMan.addDirectory(gamePath, gameDir, 0, 4);
+        printf("KYRA: Added %s to search path\n", gamePath);
+    }
+
+    // Create game description for Kyrandia 1
+    static KYRAGameDescription gameDesc;
+    memset(&gameDesc, 0, sizeof(gameDesc));
+
+    gameDesc.desc.gameid = "kyra1";
+    gameDesc.desc.extra = "Floppy";
+    gameDesc.desc.language = Common::EN_ANY;
+    gameDesc.desc.platform = Common::kPlatformDOS;
+    gameDesc.desc.flags = ADGF_NO_FLAGS;
+    gameDesc.desc.guioptions = "";
+
+    gameDesc.flags.gameID = Kyra::GI_KYRA1;
+    gameDesc.flags.lang = Common::EN_ANY;
+    gameDesc.flags.platform = Common::kPlatformDOS;
+    gameDesc.flags.isTalkie = false;
+    gameDesc.flags.isDemo = false;
+    gameDesc.flags.useHiRes = false;
+    gameDesc.flags.useDigSound = false;
+
+    printf("KYRA: Creating engine...\n");
+    ::Engine *engine = new Kyra::KyraEngine_LoK(g_system, gameDesc.flags);
+
+    printf("KYRA: Running game...\n");
+    Common::Error err = engine->run();
+
+    printf("KYRA: Game finished with code %d\n", err.getCode());
+    delete engine;
+    return (err.getCode() == Common::kNoError);
+}
+
 // Main game loop - called from main.c
 extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
 
+    // Try to launch a Kyrandia game
+    const char *kyraPath = nullptr;
+    if (cabal_path_exists("/cabal/kyra1")) kyraPath = "/cabal/kyra1";
+    else if (cabal_path_exists("/cabal/kyr1")) kyraPath = "/cabal/kyr1";
+    else if (cabal_path_exists("/cabal/kyrandia")) kyraPath = "/cabal/kyrandia";
+    if (kyraPath) {
+        printf("Cabal: Found Kyrandia directory at %s, launching...\n", kyraPath);
+        if (launchKyrandiaGame(kyraPath)) {
+            printf("Cabal: Kyrandia game completed.\n");
+            return 0;
+        }
+        printf("Cabal: Kyrandia launch failed.\n");
+    }
+
     // Try to launch a GOB (Gobliins) game if found on SD card
-    // Check for explicit version directories first
     if (cabal_path_exists("/cabal/gob2")) {
         printf("Cabal: Found GOB2 directory, launching Gobliiins 2...\n");
         if (launchGOBGameWithVersion("/cabal/gob2", 2)) {

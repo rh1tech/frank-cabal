@@ -26,6 +26,7 @@
 #include "backends/timer/default/default-timer.h"
 #include "common/util.h"
 #include "common/system.h"
+#include "common/textconsole.h"
 
 struct TimerSlot {
 	Common::TimerManager::TimerProc callback;

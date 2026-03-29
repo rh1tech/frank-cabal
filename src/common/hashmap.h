@@ -40,7 +40,8 @@
  nodes they contain. * This increases memory usage, but also can improve
  speed quite a bit.
  */
-#define USE_HASHMAP_MEMORY_POOL
+// Disabled on RP2350 - memory pool's free-list in PSRAM causes hangs
+// #define USE_HASHMAP_MEMORY_POOL
 
 
 #include "common/func.h"

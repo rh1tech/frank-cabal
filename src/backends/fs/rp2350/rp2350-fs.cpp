@@ -160,7 +160,8 @@ Common::WriteStream *RP2350FileSystemNode::createWriteStream() {
 //////////////////////////////////////////////////////////////
 
 RP2350FileStream::RP2350FileStream(void *handle)
-	: _handle(handle), _eos(false), _err(false) {
+	: _handle(handle), _eos(false), _err(false),
+	  _bufPos(0), _bufLen(0), _bufStart(0) {
 	// Get file size
 	CabalFile *file = (CabalFile *)handle;
 	_size = cabal_file_size(file);
@@ -177,24 +178,66 @@ uint32 RP2350FileStream::read(void *dataPtr, uint32 dataSize) {
 		return 0;
 	}
 
-	int32 bytesRead = cabal_file_read((CabalFile *)_handle, dataPtr, dataSize);
-	if (bytesRead < 0) {
-		_err = true;
-		return 0;
+	byte *dst = (byte *)dataPtr;
+	uint32 totalRead = 0;
+
+	while (dataSize > 0) {
+		// Serve from buffer if possible
+		if (_bufPos < _bufLen) {
+			int32 avail = _bufLen - _bufPos;
+			int32 copy = (int32)dataSize < avail ? (int32)dataSize : avail;
+			memcpy(dst, _buf + _bufPos, copy);
+			_bufPos += copy;
+			dst += copy;
+			totalRead += copy;
+			dataSize -= copy;
+			continue;
+		}
+
+		// Buffer empty - refill or read directly for large requests
+		if (dataSize >= (uint32)kBufSize) {
+			// Large read: bypass buffer
+			int32 bytesRead = cabal_file_read((CabalFile *)_handle, dst, dataSize);
+			if (bytesRead < 0) {
+				_err = true;
+				break;
+			}
+			totalRead += bytesRead;
+			// Invalidate buffer since file position changed
+			_bufLen = 0;
+			_bufPos = 0;
+			if ((uint32)bytesRead < dataSize)
+				_eos = true;
+			break;
+		}
+
+		// Small read: fill buffer
+		_bufStart = cabal_file_tell((CabalFile *)_handle);
+		int32 bytesRead = cabal_file_read((CabalFile *)_handle, _buf, kBufSize);
+		if (bytesRead < 0) {
+			_err = true;
+			break;
+		}
+		_bufLen = bytesRead;
+		_bufPos = 0;
+		if (bytesRead == 0) {
+			_eos = true;
+			break;
+		}
 	}
 
-	if ((uint32)bytesRead < dataSize) {
+	if (totalRead == 0 && dataSize > 0)
 		_eos = true;
-	}
 
-	return (uint32)bytesRead;
+	return totalRead;
 }
 
 int32 RP2350FileStream::pos() const {
 	if (!_handle) {
 		return -1;
 	}
-	return cabal_file_tell((CabalFile *)_handle);
+	// Adjust for buffered data not yet "consumed" by the file handle
+	return _bufStart + _bufPos;
 }
 
 bool RP2350FileStream::seek(int32 offs, int whence) {
@@ -208,7 +251,7 @@ bool RP2350FileStream::seek(int32 offs, int whence) {
 		newPos = offs;
 		break;
 	case SEEK_CUR:
-		newPos = cabal_file_tell((CabalFile *)_handle) + offs;
+		newPos = pos() + offs;
 		break;
 	case SEEK_END:
 		newPos = _size + offs;
@@ -221,9 +264,21 @@ bool RP2350FileStream::seek(int32 offs, int whence) {
 		return false;
 	}
 
+	// Check if seek target is within current buffer
+	if (_bufLen > 0 && newPos >= _bufStart && newPos < _bufStart + _bufLen) {
+		_bufPos = newPos - _bufStart;
+		_eos = false;
+		return true;
+	}
+
+	// Seek in the actual file
 	CabalFsResult result = cabal_file_seek((CabalFile *)_handle, newPos);
 	if (result == CABAL_FS_OK) {
-		_eos = false;  // Clear eos on successful seek
+		_eos = false;
+		// Invalidate buffer
+		_bufLen = 0;
+		_bufPos = 0;
+		_bufStart = newPos;
 		return true;
 	}
 	return false;

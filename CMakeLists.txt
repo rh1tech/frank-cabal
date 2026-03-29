@@ -129,7 +129,7 @@ set(GRAPHICS_SOURCES
     src/graphics/primitives.cpp
     src/graphics/cursorman.cpp
     src/graphics/thumbnail.cpp
-    src/graphics/scaler/thumbnail_stub.cpp
+    # thumbnail_stub.cpp replaced by thumbnail_intern.cpp (for Kyrandia save thumbnails)
     src/graphics/yuv_to_rgb.cpp
     src/graphics/wincursor.cpp
 )
@@ -367,6 +367,84 @@ set(GOB_ENGINE_SOURCES
     src/engines/gob/videoplayer.cpp
 )
 
+# Kyrandia Engine sources
+set(KYRA_ENGINE_SOURCES
+    src/engines/kyra/detection.cpp
+    src/engines/kyra/debugger.cpp
+    src/engines/kyra/gui.cpp
+    src/engines/kyra/resource.cpp
+    src/engines/kyra/resource_intern.cpp
+    src/engines/kyra/saveload.cpp
+    src/engines/kyra/screen.cpp
+    src/engines/kyra/script.cpp
+    src/engines/kyra/sound.cpp
+    src/engines/kyra/sound_adlib.cpp
+    src/engines/kyra/sound_digital.cpp
+    src/engines/kyra/sound_midi.cpp
+    src/engines/kyra/sound_pcspk.cpp
+    src/engines/kyra/sprites.cpp
+    src/engines/kyra/staticres.cpp
+    src/engines/kyra/text.cpp
+    src/engines/kyra/timer.cpp
+    src/engines/kyra/util.cpp
+    src/engines/kyra/wsamovie.cpp
+    src/engines/kyra/vqa.cpp
+    src/engines/kyra/seqplayer.cpp
+    src/engines/kyra/animator_tim.cpp
+    src/engines/kyra/script_tim.cpp
+    # Kyrandia 1
+    src/engines/kyra/kyra_v1.cpp
+    src/engines/kyra/kyra_lok.cpp
+    src/engines/kyra/animator_lok.cpp
+    src/engines/kyra/gui_v1.cpp
+    src/engines/kyra/gui_lok.cpp
+    src/engines/kyra/items_lok.cpp
+    src/engines/kyra/saveload_lok.cpp
+    src/engines/kyra/scene_lok.cpp
+    src/engines/kyra/scene_v1.cpp
+    src/engines/kyra/screen_lok.cpp
+    src/engines/kyra/script_lok.cpp
+    src/engines/kyra/script_v1.cpp
+    src/engines/kyra/sequences_lok.cpp
+    src/engines/kyra/sound_lok.cpp
+    src/engines/kyra/text_lok.cpp
+    src/engines/kyra/timer_lok.cpp
+    # Kyrandia 2
+    src/engines/kyra/kyra_v2.cpp
+    src/engines/kyra/kyra_hof.cpp
+    src/engines/kyra/animator_hof.cpp
+    src/engines/kyra/animator_v2.cpp
+    src/engines/kyra/gui_hof.cpp
+    src/engines/kyra/gui_v2.cpp
+    src/engines/kyra/items_hof.cpp
+    src/engines/kyra/items_v2.cpp
+    src/engines/kyra/saveload_hof.cpp
+    src/engines/kyra/scene_hof.cpp
+    src/engines/kyra/scene_v2.cpp
+    src/engines/kyra/screen_hof.cpp
+    src/engines/kyra/screen_v2.cpp
+    src/engines/kyra/script_hof.cpp
+    src/engines/kyra/script_v2.cpp
+    src/engines/kyra/sequences_hof.cpp
+    src/engines/kyra/sequences_v2.cpp
+    src/engines/kyra/text_hof.cpp
+    src/engines/kyra/timer_hof.cpp
+    # Kyrandia 3
+    src/engines/kyra/kyra_mr.cpp
+    src/engines/kyra/animator_mr.cpp
+    src/engines/kyra/gui_mr.cpp
+    src/engines/kyra/items_mr.cpp
+    src/engines/kyra/saveload_mr.cpp
+    src/engines/kyra/scene_mr.cpp
+    src/engines/kyra/screen_mr.cpp
+    src/engines/kyra/script_mr.cpp
+    src/engines/kyra/sequences_mr.cpp
+    src/engines/kyra/text_mr.cpp
+    src/engines/kyra/timer_mr.cpp
+    src/engines/kyra/sound_amiga.cpp
+    src/engines/kyra/sound_towns.cpp
+)
+
 # ScummVM Backends
 set(BACKEND_SOURCES
     src/backends/base-backend.cpp
@@ -376,6 +454,16 @@ set(BACKEND_SOURCES
     src/backends/saves/default/default-saves.cpp
     src/backends/saves/savefile.cpp
     src/common/zlib.cpp
+    src/audio/midiparser_xmidi.cpp
+    src/audio/decoders/voc.cpp
+    src/audio/softsynth/fmtowns_pc98/towns_audio.cpp
+    src/audio/softsynth/fmtowns_pc98/towns_euphony.cpp
+    src/audio/softsynth/fmtowns_pc98/towns_pc98_driver.cpp
+    src/audio/softsynth/fmtowns_pc98/towns_pc98_fmsynth.cpp
+    src/audio/mods/maxtrax.cpp
+    src/graphics/thumbnail.cpp
+    src/graphics/scaler/thumbnail_intern.cpp
+    src/graphics/sjis.cpp
     src/backends/events/default/default-events.cpp
     src/backends/timer/default/default-timer.cpp
     src/backends/platform/rp2350/rp2350-minimal.cpp
@@ -399,6 +487,7 @@ add_executable(cabal
     ${ENGINE_SOURCES}
     ${AGI_ENGINE_SOURCES}
     ${GOB_ENGINE_SOURCES}
+    ${KYRA_ENGINE_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -438,9 +527,12 @@ target_compile_definitions(cabal PRIVATE
     ENABLE_AGI=1      # Sierra AGI games
     ENABLE_GOB=1      # Gobliins games
     ENABLE_SCI=1      # Sierra SCI games (early versions)
+    ENABLE_KYRA=1     # Legend of Kyrandia games
 
     # Memory optimization flags
     CABAL_LOW_MEMORY=1
+    PICO_MALLOC_PANIC=0
+    SKIP_PICO_MALLOC=1
 
     # Platform identification
     PICO_ON_DEVICE=1

@@ -168,17 +168,21 @@ Common::Error KyraEngine_v1::init() {
 	if (ConfMan.hasKey("render_mode"))
 		_configRenderMode = Common::parseRenderMode(ConfMan.get("render_mode"));
 
+	printf("KYRA: Creating resource manager...\n");
 	_res = new Resource(this);
 	assert(_res);
 	_res->reset();
 
+	printf("KYRA: Loading static resources...\n");
 	_staticres = new StaticResource(this);
 	assert(_staticres);
 	if (!_staticres->init())
 		error("_staticres->init() failed");
+	printf("KYRA: Initializing screen...\n");
 	assert(screen());
 	if (!screen()->init())
 		error("screen()->init() failed");
+	printf("KYRA: Screen initialized, setting up timers...\n");
 	_timer = new TimerManager(this, _system);
 	assert(_timer);
 	setupTimers();
@@ -187,6 +191,7 @@ Common::Error KyraEngine_v1::init() {
 
 	setupOpcodeTable();
 	readSettings();
+	printf("KYRA: Engine init complete\n");
 
 	if (ConfMan.hasKey("save_slot")) {
 		_gameToLoad = ConfMan.getInt("save_slot");

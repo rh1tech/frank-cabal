@@ -68,6 +68,13 @@ protected:
 	bool _err;
 	int32 _size;
 
+	// Read buffer for small reads (avoids per-byte SD card overhead)
+	static const int kBufSize = 4096;
+	byte _buf[kBufSize];
+	int32 _bufPos;    // Current read position within buffer
+	int32 _bufLen;    // Valid bytes in buffer
+	int32 _bufStart;  // File offset where buffer starts
+
 	RP2350FileStream(void *handle);
 
 public:

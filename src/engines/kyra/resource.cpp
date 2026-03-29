@@ -321,16 +321,21 @@ Common::Archive *Resource::loadArchive(const Common::String &name, Common::Archi
 	if (cachedArchive != _archiveCache.end())
 		return cachedArchive->_value;
 
+	printf("KYRA: loadArchive('%s') opening...\n", name.c_str());
 	Common::SeekableReadStream *stream = member->createReadStream();
 
-	if (!stream)
+	if (!stream) {
+		printf("KYRA: loadArchive - no stream!\n");
 		return 0;
+	}
+	printf("KYRA: loadArchive size=%d, trying loaders...\n", stream->size());
 
 	Common::Archive *archive = 0;
 	for (LoaderList::const_iterator i = _loaders.begin(); i != _loaders.end(); ++i) {
 		if ((*i)->checkFilename(name)) {
 			if ((*i)->isLoadable(name, *stream)) {
 				stream->seek(0, SEEK_SET);
+				printf("KYRA: loadArchive - loading...\n");
 				archive = (*i)->load(member, *stream);
 				break;
 			} else {
