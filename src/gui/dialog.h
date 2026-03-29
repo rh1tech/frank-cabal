@@ -64,8 +64,15 @@ public:
     // Close the dialog
     void close() {}
 
+    // Set the dialog result
+    void setResult(int result) { _result = result; }
+    int getResult() const { return _result; }
+
     // Check if dialog is visible
     bool isVisible() const { return false; }
+
+protected:
+    int _result = kMessageOK;
 };
 
 /**

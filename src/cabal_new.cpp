@@ -12,22 +12,22 @@ extern "C" {
 #include "psram_allocator.h"
 int printf(const char *, ...);
 
-void *__real_malloc(size_t size) {
+void *__wrap_malloc(size_t size) {
     return psram_malloc(size);
 }
 
-void *__real_calloc(size_t count, size_t size) {
+void *__wrap_calloc(size_t count, size_t size) {
     size_t total = count * size;
     void *ptr = psram_malloc(total);
     if (ptr) memset(ptr, 0, total);
     return ptr;
 }
 
-void *__real_realloc(void *ptr, size_t size) {
+void *__wrap_realloc(void *ptr, size_t size) {
     return psram_realloc(ptr, size);
 }
 
-void __real_free(void *ptr) {
+void __wrap_free(void *ptr) {
     psram_free(ptr);
 }
 

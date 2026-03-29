@@ -5,6 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// When using --wrap=malloc, call the real libc functions to avoid recursion
+extern void *__real_malloc(size_t size);
+extern void *__real_realloc(void *ptr, size_t size);
+extern void __real_free(void *ptr);
+
 // PSRAM is mapped at 0x11000000 on RP2350
 #define PSRAM_BASE 0x11000000
 #define PSRAM_SIZE ((size_t)CABAL_PSRAM_SIZE_BYTES)
@@ -79,9 +84,9 @@ void psram_set_ready(int ready) {
 }
 
 void *psram_malloc(size_t size) {
-    // Before PSRAM is ready, use SRAM
+    // Before PSRAM is ready, use SRAM (call real libc malloc to avoid wrap recursion)
     if (!psram_ready || psram_sram_mode) {
-        return malloc(size);
+        return __real_malloc(size);
     }
 
     // Align size to 8 bytes, ensure minimum
@@ -176,7 +181,7 @@ void *psram_realloc(void *ptr, size_t new_size) {
         return new_ptr;
     }
 
-    return realloc(ptr, new_size);
+    return __real_realloc(ptr, new_size);
 }
 
 void psram_free(void *ptr) {
@@ -243,8 +248,8 @@ void psram_free(void *ptr) {
         return;
     }
 
-    // Not in PSRAM, assume regular malloc
-    free(ptr);
+    // Not in PSRAM, assume regular libc malloc (avoid wrap recursion)
+    __real_free(ptr);
 }
 
 void *psram_get_scratch_1(size_t size) {

@@ -306,6 +306,9 @@ int16 OSystem_RP2350::getOverlayWidth() {
 
 bool OSystem_RP2350::showMouse(bool visible) {
 	bool prev = _mouseVisible;
+	if (visible != prev) {
+		printf("showMouse(%d)\n", visible);
+	}
 	_mouseVisible = visible;
 	cabal_show_mouse(visible);
 	return prev;
@@ -334,6 +337,7 @@ void OSystem_RP2350::setMouseCursor(const void *buf, uint w, uint h, int hotspot
 		return;
 	}
 	memcpy(_cursor.data, buf, w * h);
+	printf("setMouseCursor(%ux%u hot=%d,%d key=%u)\n", w, h, hotspotX, hotspotY, (unsigned)keycolor);
 
 	cabal_set_mouse_cursor(_cursor.data, w, h, hotspotX, hotspotY, (uint8)keycolor);
 }

@@ -222,6 +222,10 @@ void ScummEngine::parseEvents() {
 	Common::Event event;
 
 	while (_eventMan->pollEvent(event)) {
+		if (event.type == Common::EVENT_KEYDOWN)
+			printf("SCUMM: key down %d ascii %d\n", event.kbd.keycode, event.kbd.ascii);
+		if (event.type == Common::EVENT_LBUTTONDOWN || event.type == Common::EVENT_RBUTTONDOWN)
+			printf("SCUMM: mouse btn at %d,%d\n", event.mouse.x, event.mouse.y);
 		parseEvent(event);
 	}
 }

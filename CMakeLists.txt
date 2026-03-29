@@ -51,6 +51,20 @@ set(CMAKE_CXX_STANDARD 17)
 # Version
 set(CABAL_VERSION "0.1.0")
 
+# Override pico_malloc BEFORE SDK init: We provide our own __wrap_malloc/calloc/realloc/free
+# that route to PSRAM. The SDK's pico_malloc is guarded by "if (NOT TARGET pico_malloc)".
+add_library(pico_malloc INTERFACE)
+add_library(pico_malloc_headers INTERFACE)
+target_include_directories(pico_malloc_headers SYSTEM INTERFACE
+    ${PICO_SDK_PATH}/src/rp2_common/pico_malloc/include
+)
+target_link_options(pico_malloc INTERFACE
+    -Wl,--wrap=malloc
+    -Wl,--wrap=calloc
+    -Wl,--wrap=realloc
+    -Wl,--wrap=free
+)
+
 pico_sdk_init()
 
 # Initialize pico-extras if available
@@ -120,6 +134,7 @@ set(COMMON_SOURCES
     src/common/ini-file.cpp
     src/common/winexe.cpp
     src/common/winexe_pe.cpp
+    src/common/localization.cpp
 )
 
 # ScummVM Graphics library
@@ -132,6 +147,7 @@ set(GRAPHICS_SOURCES
     # thumbnail_stub.cpp replaced by thumbnail_intern.cpp (for Kyrandia save thumbnails)
     src/graphics/yuv_to_rgb.cpp
     src/graphics/wincursor.cpp
+    src/graphics/maccursor.cpp
 )
 
 # GUI stubs for embedded
@@ -178,7 +194,12 @@ set(AUDIO_SOURCES
     src/audio/softsynth/opl/mame.cpp
     src/audio/audiodev/audiodev.cpp
     src/audio/audiodev/opl.cpp
+    src/audio/audiodev/pcspk.cpp
     src/audio/adlib.cpp
+    src/audio/softsynth/cms.cpp
+    src/audio/softsynth/sid.cpp
+    src/audio/softsynth/wave6581.cpp
+    src/audio/mods/tfmx.cpp
 )
 
 # ScummVM Base library
@@ -194,6 +215,7 @@ set(ENGINE_SOURCES
     src/engines/game.cpp
     src/engines/savestate.cpp
     src/engines/obsolete.cpp
+    src/engines/dialogs.cpp
 )
 
 # AGI Engine sources
@@ -445,6 +467,128 @@ set(KYRA_ENGINE_SOURCES
     src/engines/kyra/sound_towns.cpp
 )
 
+# SCUMM Engine sources (core v0-v6)
+set(SCUMM_ENGINE_SOURCES
+    src/engines/scumm/detection.cpp
+    src/engines/scumm/scumm.cpp
+    src/engines/scumm/actor.cpp
+    src/engines/scumm/akos.cpp
+    src/engines/scumm/base-costume.cpp
+    src/engines/scumm/bomp.cpp
+    src/engines/scumm/boxes.cpp
+    src/engines/scumm/camera.cpp
+    src/engines/scumm/cdda.cpp
+    src/engines/scumm/charset.cpp
+    src/engines/scumm/charset-fontdata.cpp
+    src/engines/scumm/costume.cpp
+    src/engines/scumm/cursor.cpp
+    src/engines/scumm/debugger.cpp
+    src/engines/scumm/dialogs.cpp
+    src/engines/scumm/file.cpp
+    src/engines/scumm/file_nes.cpp
+    src/engines/scumm/gfx.cpp
+    src/engines/scumm/gfx_towns.cpp
+    src/engines/scumm/help.cpp
+    src/engines/scumm/input.cpp
+    src/engines/scumm/midiparser_ro.cpp
+    src/engines/scumm/nut_renderer.cpp
+    src/engines/scumm/object.cpp
+    src/engines/scumm/palette.cpp
+    src/engines/scumm/resource.cpp
+    src/engines/scumm/resource_v2.cpp
+    src/engines/scumm/resource_v3.cpp
+    src/engines/scumm/resource_v4.cpp
+    src/engines/scumm/room.cpp
+    src/engines/scumm/saveload.cpp
+    src/engines/scumm/script.cpp
+    src/engines/scumm/script_v0.cpp
+    src/engines/scumm/script_v2.cpp
+    src/engines/scumm/script_v3.cpp
+    src/engines/scumm/script_v4.cpp
+    src/engines/scumm/script_v5.cpp
+    src/engines/scumm/script_v6.cpp
+    src/engines/scumm/sound.cpp
+    src/engines/scumm/string.cpp
+    src/engines/scumm/usage_bits.cpp
+    src/engines/scumm/util.cpp
+    src/engines/scumm/vars.cpp
+    src/engines/scumm/verbs.cpp
+    # iMUSE (classic MIDI-based, used by v5-v6)
+    src/engines/scumm/imuse/imuse.cpp
+    src/engines/scumm/imuse/imuse_part.cpp
+    src/engines/scumm/imuse/imuse_player.cpp
+    src/engines/scumm/imuse/instrument.cpp
+    src/engines/scumm/imuse/mac_m68k.cpp
+    src/engines/scumm/imuse/pcspk.cpp
+    src/engines/scumm/imuse/sysex_samnmax.cpp
+    src/engines/scumm/imuse/sysex_scumm.cpp
+    # Players
+    src/engines/scumm/players/player_ad.cpp
+    src/engines/scumm/players/player_apple2.cpp
+    src/engines/scumm/players/player_mac.cpp
+    src/engines/scumm/players/player_mod.cpp
+    src/engines/scumm/players/player_nes.cpp
+    src/engines/scumm/players/player_pce.cpp
+    src/engines/scumm/players/player_sid.cpp
+    src/engines/scumm/players/player_towns.cpp
+    src/engines/scumm/players/player_v1.cpp
+    src/engines/scumm/players/player_v2.cpp
+    src/engines/scumm/players/player_v2a.cpp
+    src/engines/scumm/players/player_v2base.cpp
+    src/engines/scumm/players/player_v2cms.cpp
+    src/engines/scumm/players/player_v3a.cpp
+    src/engines/scumm/players/player_v3m.cpp
+    src/engines/scumm/players/player_v4a.cpp
+    src/engines/scumm/players/player_v5m.cpp
+    # HE engine files (required by v6/v7 inheritance chain)
+    src/engines/scumm/he/sound_he.cpp
+    src/engines/scumm/he/resource_he.cpp
+    src/engines/scumm/he/script_v60he.cpp
+    src/engines/scumm/he/script_v70he.cpp
+    src/engines/scumm/he/palette_he.cpp
+    src/engines/scumm/he/floodfill_he.cpp
+    src/engines/scumm/he/animation_he.cpp
+    src/engines/scumm/he/sprite_he.cpp
+    src/engines/scumm/he/wiz_he.cpp
+    src/engines/scumm/he/logic_he.cpp
+    src/engines/scumm/he/cup_player_he.cpp
+    src/engines/scumm/he/script_v71he.cpp
+    src/engines/scumm/he/script_v72he.cpp
+    src/engines/scumm/he/script_v80he.cpp
+    src/engines/scumm/he/script_v90he.cpp
+    src/engines/scumm/he/script_v100he.cpp
+)
+
+# SCUMM v7/v8 sources (Full Throttle, The Dig, COMI)
+set(SCUMM_7_8_SOURCES
+    src/engines/scumm/script_v8.cpp
+    # iMUSE Digital (v7/v8 audio)
+    src/engines/scumm/imuse_digi/dimuse.cpp
+    src/engines/scumm/imuse_digi/dimuse_bndmgr.cpp
+    src/engines/scumm/imuse_digi/dimuse_codecs.cpp
+    src/engines/scumm/imuse_digi/dimuse_music.cpp
+    src/engines/scumm/imuse_digi/dimuse_script.cpp
+    src/engines/scumm/imuse_digi/dimuse_sndmgr.cpp
+    src/engines/scumm/imuse_digi/dimuse_tables.cpp
+    src/engines/scumm/imuse_digi/dimuse_track.cpp
+    # SMUSH video player
+    src/engines/scumm/smush/channel.cpp
+    src/engines/scumm/smush/codec1.cpp
+    src/engines/scumm/smush/codec37.cpp
+    src/engines/scumm/smush/codec47.cpp
+    src/engines/scumm/smush/imuse_channel.cpp
+    src/engines/scumm/smush/saud_channel.cpp
+    src/engines/scumm/smush/smush_font.cpp
+    src/engines/scumm/smush/smush_mixer.cpp
+    src/engines/scumm/smush/smush_player.cpp
+    # INSANE (action sequences)
+    src/engines/scumm/insane/insane.cpp
+    src/engines/scumm/insane/insane_ben.cpp
+    src/engines/scumm/insane/insane_enemy.cpp
+    src/engines/scumm/insane/insane_iact.cpp
+    src/engines/scumm/insane/insane_scenes.cpp
+)
+
 # ScummVM Backends
 set(BACKEND_SOURCES
     src/backends/base-backend.cpp
@@ -485,9 +629,11 @@ add_executable(cabal
     ${AUDIO_SOURCES}
     ${BASE_SOURCES}
     ${ENGINE_SOURCES}
-    ${AGI_ENGINE_SOURCES}
-    ${GOB_ENGINE_SOURCES}
-    ${KYRA_ENGINE_SOURCES}
+    # ${AGI_ENGINE_SOURCES}
+    # ${GOB_ENGINE_SOURCES}
+    # ${KYRA_ENGINE_SOURCES}
+    ${SCUMM_ENGINE_SOURCES}
+    ${SCUMM_7_8_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -524,10 +670,12 @@ target_compile_definitions(cabal PRIVATE
     PICO_AUDIO_I2S_DMA_IRQ=1
 
     # Game engines to enable
-    ENABLE_AGI=1      # Sierra AGI games
-    ENABLE_GOB=1      # Gobliins games
-    ENABLE_SCI=1      # Sierra SCI games (early versions)
-    ENABLE_KYRA=1     # Legend of Kyrandia games
+    # ENABLE_AGI=1        # Sierra AGI games (disabled)
+    # ENABLE_GOB=1        # Gobliins games (disabled)
+    # ENABLE_SCI=1        # Sierra SCI games (disabled)
+    # ENABLE_KYRA=1       # Legend of Kyrandia games (disabled)
+    ENABLE_SCUMM=1      # LucasArts SCUMM games
+    ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI)
 
     # Memory optimization flags
     CABAL_LOW_MEMORY=1

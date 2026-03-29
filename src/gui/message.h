@@ -25,6 +25,17 @@ public:
     virtual ~MessageDialog() {}
 };
 
+/**
+ * Timed message dialog stub - auto-dismisses after timeout on real ScummVM
+ */
+class TimedMessageDialog : public MessageDialog {
+public:
+    TimedMessageDialog(const Common::String &message, uint32 duration)
+        : MessageDialog(message) {
+    }
+    virtual ~TimedMessageDialog() {}
+};
+
 } // End of namespace GUI
 
 #endif // GUI_MESSAGE_H

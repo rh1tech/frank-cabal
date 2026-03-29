@@ -27,6 +27,8 @@
 #include "scumm/bomp.h"
 #include "scumm/smush/codec37.h"
 
+extern "C" void psram_print_status(void);
+
 namespace Scumm {
 
 Codec37Decoder::Codec37Decoder(int width, int height) {
@@ -34,7 +36,10 @@ Codec37Decoder::Codec37Decoder(int width, int height) {
 	_height = height;
 	_frameSize = _width * _height;
 	_deltaSize = _frameSize * 3 + 0x13600;
+	printf("Codec37: allocating %d bytes (%dx%d, frameSize=%d)\n", _deltaSize, _width, _height, _frameSize);
+	psram_print_status();
 	_deltaBuf = (byte *)calloc(_deltaSize, sizeof(byte));
+	printf("Codec37: calloc returned %p\n", _deltaBuf);
 	if (_deltaBuf == 0)
 		error("unable to allocate decoder buffer");
 	_deltaBufs[0] = _deltaBuf + 0x4D80;

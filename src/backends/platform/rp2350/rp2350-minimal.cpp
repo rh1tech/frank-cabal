@@ -514,9 +514,11 @@ bool cabal_poll_event(CabalEvent *event) {
         event->type = pressed ? CABAL_EVENT_KEYDOWN : CABAL_EVENT_KEYUP;
         event->kbd.keycode = keycode;
 
-        // Get ASCII value
+        // Get ASCII value - control keys have their own ascii codes
         if (keycode >= 32 && keycode < 127) {
             event->kbd.ascii = keycode;
+        } else if (keycode == 8 || keycode == 9 || keycode == 13 || keycode == 27) {
+            event->kbd.ascii = keycode;  // BS, TAB, Enter, ESC
         } else {
             event->kbd.ascii = 0;
         }

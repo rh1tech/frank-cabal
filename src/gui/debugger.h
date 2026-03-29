@@ -55,6 +55,12 @@ protected:
 		// Stub - commands not implemented on embedded
 	}
 
+	// Register a variable for inspection - stub on embedded
+	template<typename T>
+	void registerVar(const char *varName, T *variable) {}
+	template<typename T>
+	void registerVar(const char *varName, T *variable, int arraySize) {}
+
 private:
 	bool _isActive;
 };
