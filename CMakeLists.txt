@@ -89,6 +89,7 @@ add_library(drivers
     drivers/HDMI.c
     drivers/psram_init.c
     drivers/psram_allocator.c
+    drivers/dlmalloc.c
 )
 target_include_directories(drivers PUBLIC
     drivers
@@ -99,6 +100,10 @@ target_compile_definitions(drivers PRIVATE
     PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
     CABAL_PSRAM_SIZE_BYTES=8388608
 )
+# dlmalloc compiled in mspace-only mode — real malloc/free inside PSRAM,
+# isolated from newlib's SRAM heap.
+set_source_files_properties(drivers/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS
+    "ONLY_MSPACES=1;HAVE_MMAP=0;HAVE_MORECORE=0;NO_MALLOC_STATS=1;USE_LOCKS=0;ABORT_ON_ASSERT_FAILURE=0;MALLOC_FAILURE_ACTION=;LACKS_SYS_MMAN_H=1;LACKS_UNISTD_H=1;LACKS_SYS_PARAM_H=1")
 target_link_libraries(drivers pico_stdlib hardware_dma hardware_pio hardware_spi)
 
 # ScummVM Common library

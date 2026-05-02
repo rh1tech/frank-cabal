@@ -724,6 +724,10 @@ static bool launchSciGame(const char *gamePath, const char *gameIdStr) {
     ConfMan.setBool("windows_cursors", false);
     ConfMan.setBool("silver_cursors", false);
     ConfMan.setBool("enable_high_resolution_graphics", false);
+    ConfMan.setBool("disable_dithering", false);
+    ConfMan.setBool("native_fb01", false);
+    ConfMan.setBool("use_cdaudio", false);
+    ConfMan.setInt("save_slot", -1);
     ConfMan.set("render_mode", "");
 
     printf("SCI: Loading plugins...\n");
