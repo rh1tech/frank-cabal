@@ -269,7 +269,9 @@ void Console::postEnter() {
 			videoDecoder = new Video::AVIDecoder();
 #endif
 		} else if (_videoFile.hasSuffix(".avi")) {
-			videoDecoder = new Video::AVIDecoder();
+			// Video::AVIDecoder not linked in this build.
+			warning(".avi playback not supported in this build");
+			return;
 		} else {
 			warning("Unrecognized video type");
 		}

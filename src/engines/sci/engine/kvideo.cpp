@@ -162,9 +162,9 @@ reg_t kShowMovie(EngineState *s, int argc, reg_t *argv) {
 				return NULL_REG;
 			}
 
-			videoDecoder = new Video::QuickTimeDecoder();
-			if (!videoDecoder->loadFile(filename))
-				error("Could not open '%s'", filename.c_str());
+			// Video::QuickTimeDecoder not linked in this build (Mac-only video).
+			warning("QuickTime movie '%s' not supported in this build", filename.c_str());
+			return NULL_REG;
 		} else {
 			// DOS SEQ
 			// SEQ's are called with no subops, just the string and delay
@@ -195,28 +195,8 @@ reg_t kShowMovie(EngineState *s, int argc, reg_t *argv) {
 		switch (argv[0].toUint16()) {
 		case 0: {
 			Common::String filename = s->_segMan->getString(argv[1]);
-			videoDecoder = new Video::AVIDecoder();
-
-			if (filename.equalsIgnoreCase("gk2a.avi")) {
-				// HACK: Switch to 16bpp graphics for Indeo3.
-				// The only known movie to do use this codec is the GK2 demo trailer
-				// If another video turns up that uses Indeo, we may have to add a better
-				// check.
-				initGraphics(screenWidth, screenHeight, screenWidth > 320, NULL);
-
-				if (g_system->getScreenFormat().bytesPerPixel == 1) {
-					warning("This video requires >8bpp color to be displayed, but could not switch to RGB color mode");
-					return NULL_REG;
-				}
-			}
-
-			if (!videoDecoder->loadFile(filename.c_str())) {
-				warning("Failed to open movie file %s", filename.c_str());
-				delete videoDecoder;
-				videoDecoder = 0;
-			} else {
-				s->_videoState.fileName = filename;
-			}
+			// Video::AVIDecoder not linked in this build (CD-only AVI playback).
+			warning("AVI movie '%s' not supported in this build", filename.c_str());
 			break;
 		}
 		default:

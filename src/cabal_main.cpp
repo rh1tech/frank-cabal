@@ -25,6 +25,9 @@
 // Kyrandia Engine includes
 #include "kyra/kyra_lok.h"
 
+// SCI Engine includes
+#include "sci/sci.h"
+
 // SCUMM Engine includes (temporarily disabled along with Full Throttle)
 // #include "scumm/scumm_v7.h"
 // #include "scumm/detection.h"
@@ -624,9 +627,173 @@ static bool launchKyrandiaGame(const char *gamePath) {
 
 // Full Throttle (SCUMM v7) launcher temporarily disabled.
 
+// Map a common SCI game id string (from the directory name or manual hint)
+// to the engine's SciGameId enum. Only covers SCI0/SCI1/SCI1.1 floppy and
+// low-res CD games — SCI32 titles intentionally not listed.
+static Sci::SciGameId detectSciGameId(const char *gamePath) {
+    const char *slash = strrchr(gamePath, '/');
+    const char *name = slash ? slash + 1 : gamePath;
+
+    struct Entry { const char *prefix; Sci::SciGameId id; };
+    static const Entry table[] = {
+        {"kq1",        Sci::GID_KQ1},
+        {"kq4",        Sci::GID_KQ4},
+        {"kq5",        Sci::GID_KQ5},
+        {"kq6",        Sci::GID_KQ6},
+        {"lsl1",       Sci::GID_LSL1},
+        {"lsl2",       Sci::GID_LSL2},
+        {"lsl3",       Sci::GID_LSL3},
+        {"lsl5",       Sci::GID_LSL5},
+        {"lsl6",       Sci::GID_LSL6},
+        {"sq1",        Sci::GID_SQ1},
+        {"sq3",        Sci::GID_SQ3},
+        {"sq4",        Sci::GID_SQ4},
+        {"sq5",        Sci::GID_SQ5},
+        {"pq1",        Sci::GID_PQ1},
+        {"pq2",        Sci::GID_PQ2},
+        {"pq3",        Sci::GID_PQ3},
+        {"qfg1vga",    Sci::GID_QFG1VGA},
+        {"qfg1",       Sci::GID_QFG1},
+        {"qfg2",       Sci::GID_QFG2},
+        {"qfg3",       Sci::GID_QFG3},
+        {"iceman",     Sci::GID_ICEMAN},
+        {"laurabow2",  Sci::GID_LAURABOW2},
+        {"laurabow",   Sci::GID_LAURABOW},
+        {"longbow",    Sci::GID_LONGBOW},
+        {"ecoquest2",  Sci::GID_ECOQUEST2},
+        {"ecoquest",   Sci::GID_ECOQUEST},
+        {"freddy",     Sci::GID_FREDDYPHARKAS},
+        {"hoyle1",     Sci::GID_HOYLE1},
+        {"hoyle2",     Sci::GID_HOYLE2},
+        {"hoyle3",     Sci::GID_HOYLE3},
+        {"hoyle4",     Sci::GID_HOYLE4},
+        {"jones",      Sci::GID_JONES},
+        {"pepper",     Sci::GID_PEPPER},
+        {"slater",     Sci::GID_SLATER},
+        {"castlebrain",Sci::GID_CASTLEBRAIN},
+        {"islandbrain",Sci::GID_ISLANDBRAIN},
+        {"mothergoose",Sci::GID_MOTHERGOOSE},
+        {"camelot",    Sci::GID_CAMELOT},
+    };
+
+    for (const auto &e : table) {
+        if (strncmp(name, e.prefix, strlen(e.prefix)) == 0) {
+            printf("SCI Detection: %s -> game id %s\n", name, e.prefix);
+            return e.id;
+        }
+    }
+    printf("SCI Detection: %s not recognized, falling back to fanmade\n", name);
+    return Sci::GID_FANMADE;
+}
+
+// Sierra SCI game launcher (SCI0 / SCI1 / SCI1.1)
+static bool launchSciGame(const char *gamePath, const char *gameIdStr) {
+    printf("SCI: Launching game from %s (id=%s)\n", gamePath,
+           gameIdStr ? gameIdStr : "(auto)");
+
+    ConfMan.set("path", gamePath);
+    ConfMan.setActiveDomain("cabal-sci");
+
+    ConfMan.setInt("music_volume", 192);
+    ConfMan.setInt("sfx_volume", 192);
+    ConfMan.setInt("speech_volume", 192);
+    ConfMan.setBool("mute", false);
+    ConfMan.setBool("speech_mute", false);
+    ConfMan.setBool("sfx_mute", false);
+    ConfMan.setBool("music_mute", false);
+    ConfMan.setInt("autosave_period", 0);
+    ConfMan.setBool("enable_unsupported_game_warning", false);
+    ConfMan.set("music_driver", "adlib");
+    ConfMan.set("gm_device", "null");
+    ConfMan.set("mt32_device", "null");
+    ConfMan.setBool("native_mt32", false);
+    ConfMan.setBool("enable_gs", false);
+    ConfMan.setBool("multi_midi", false);
+    ConfMan.setInt("midi_gain", 100);
+    ConfMan.setBool("subtitles", true);
+    ConfMan.setInt("talkspeed", 60);
+    ConfMan.set("language", "en");
+    ConfMan.set("gfx_mode", "normal");
+    ConfMan.setBool("aspect_ratio", false);
+
+    // SCI-specific prefs
+    ConfMan.setBool("copy_protection", false);
+    ConfMan.setBool("prefer_digitalsfx", false);
+    ConfMan.setBool("originalsaveload", false);
+    ConfMan.setBool("enable_black_lined_video", false);
+    ConfMan.setBool("windows_cursors", false);
+    ConfMan.setBool("silver_cursors", false);
+    ConfMan.setBool("enable_high_resolution_graphics", false);
+    ConfMan.set("render_mode", "");
+
+    printf("SCI: Loading plugins...\n");
+    PluginManager::instance().loadAllPlugins();
+
+    Common::FSNode gameDir(gamePath);
+    if (gameDir.exists() && gameDir.isDirectory()) {
+        SearchMan.addDirectory(gamePath, gameDir, 0, 4);
+        printf("SCI: Added %s to search path\n", gamePath);
+    } else {
+        printf("SCI: WARNING - %s not accessible\n", gamePath);
+        return false;
+    }
+
+    Sci::SciGameId gameId = detectSciGameId(gamePath);
+
+    static ADGameDescription gameDesc;
+    memset(&gameDesc, 0, sizeof(gameDesc));
+    gameDesc.gameid = gameIdStr ? gameIdStr : "sci";
+    gameDesc.extra = "";
+    gameDesc.language = Common::EN_ANY;
+    gameDesc.platform = Common::kPlatformDOS;
+    gameDesc.flags = ADGF_NO_FLAGS;
+    gameDesc.guioptions = GUIO_NONE;
+
+    ConfMan.set("gameid", gameDesc.gameid);
+
+    printf("SCI: Creating engine instance...\n");
+    ::Engine *engine = new Sci::SciEngine(g_system, &gameDesc, gameId);
+
+    printf("SCI: Running game...\n");
+    Common::Error err = engine->run();
+
+    printf("SCI: Game finished with code %d (%s)\n",
+           err.getCode(), err.getDesc().c_str());
+    delete engine;
+    return (err.getCode() == Common::kNoError);
+}
+
 // Main game loop - called from main.c
 extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
+
+    // Try to launch a Sierra SCI game
+    static const char *const sciDirs[] = {
+        "/cabal/sci",
+        "/cabal/lsl1", "/cabal/lsl2", "/cabal/lsl3", "/cabal/lsl5", "/cabal/lsl6",
+        "/cabal/kq1",  "/cabal/kq4",  "/cabal/kq5",  "/cabal/kq6",
+        "/cabal/sq1",  "/cabal/sq3",  "/cabal/sq4",  "/cabal/sq5",
+        "/cabal/pq1",  "/cabal/pq2",  "/cabal/pq3",
+        "/cabal/qfg1", "/cabal/qfg1vga", "/cabal/qfg2", "/cabal/qfg3",
+        "/cabal/iceman", "/cabal/laurabow", "/cabal/laurabow2",
+        "/cabal/longbow", "/cabal/ecoquest", "/cabal/ecoquest2",
+        "/cabal/freddy", "/cabal/jones", "/cabal/pepper", "/cabal/slater",
+        "/cabal/castlebrain", "/cabal/islandbrain", "/cabal/mothergoose",
+        "/cabal/camelot",
+        nullptr,
+    };
+    for (int i = 0; sciDirs[i]; i++) {
+        if (cabal_path_exists(sciDirs[i])) {
+            printf("Cabal: Found SCI directory at %s, launching...\n", sciDirs[i]);
+            if (launchSciGame(sciDirs[i], nullptr)) {
+                printf("Cabal: SCI game completed.\n");
+                return 0;
+            }
+            printf("Cabal: SCI launch from %s failed, trying next engine.\n",
+                   sciDirs[i]);
+            break;
+        }
+    }
 
     // Try to launch a Kyrandia game
     const char *kyraPath = nullptr;

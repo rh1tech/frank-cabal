@@ -369,29 +369,17 @@ Audio::RewindableAudioStream *AudioPlayer::getAudioStream(uint32 number, uint32 
 					audioSeekStream = Audio::makePCMStream(data, size, _audioRate, flags);
 			}
 		} else if (audioRes->size > 4 && READ_BE_UINT32(audioRes->data) == MKTAG('R','I','F','F')) {
-			// WAVE detected
-			Audio::RewindableAudioStream *rewindStream = Audio::makeWAVStream(stream.release(), DisposeAfterUse::YES);
-			if (!rewindStream)
-				error("Failed to load WAV from stream");
-
-			audioSeekStream = dynamic_cast<Audio::SeekableAudioStream *>(rewindStream);
-			if (!audioSeekStream)
-				error("WAV file is not seekable");
+			// WAVE detected. Upstream uses dynamic_cast<SeekableAudioStream*>
+			// which we can't do under -fno-rtti with virtual inheritance.
+			// SCI0/SCI1 floppy targets don't hit this path, so bail.
+			error("WAV audio resource not supported in this build");
 		} else if (audioRes->size > 4 && READ_BE_UINT32(audioRes->data) == MKTAG('F','O','R','M')) {
-			// AIFF detected
-			Audio::RewindableAudioStream *rewindStream = Audio::makeAIFFStream(stream.release(), DisposeAfterUse::YES);
-			if (!rewindStream)
-				error("Failed to load AIFF from stream");
-
-			audioSeekStream = dynamic_cast<Audio::SeekableAudioStream *>(rewindStream);
-			if (!audioSeekStream)
-				error("AIFF file is not seekable");
+			// AIFF detected — same RTTI restriction; not needed for floppy targets.
+			error("AIFF audio resource not supported in this build");
 		} else if (audioRes->size > 14 && READ_BE_UINT16(audioRes->data) == 1 && READ_BE_UINT16(audioRes->data + 2) == 1
 				&& READ_BE_UINT16(audioRes->data + 4) == 5 && READ_BE_UINT32(audioRes->data + 10) == 0x00018051) {
-			// Mac snd detected
-			audioSeekStream = Audio::makeMacSndStream(stream.release(), DisposeAfterUse::YES);
-			if (!audioSeekStream)
-				error("Failed to load Mac sound stream");
+			// Mac snd — Audio::makeMacSndStream not linked in this build.
+			error("Mac 'snd' audio resource not supported in this build");
 
 		} else {
 			// SCI1 raw audio

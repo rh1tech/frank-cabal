@@ -10,51 +10,35 @@ extern void *__real_malloc(size_t size);
 extern void *__real_realloc(void *ptr, size_t size);
 extern void __real_free(void *ptr);
 
-// PSRAM is mapped at 0x11000000 on RP2350
+// PSRAM is mapped at 0x11000000 on RP2350 (CS1 via XIP).
 #define PSRAM_BASE 0x11000000
 #define PSRAM_SIZE ((size_t)CABAL_PSRAM_SIZE_BYTES)
 
 static uint8_t *psram_start = (uint8_t *)PSRAM_BASE;
 
 // Reserve 512KB for scratch buffers at the beginning
+//   0-128KB : scratch_1
+// 128-256KB : scratch_2
+// 256-512KB : file buffer
 #define SCRATCH_SIZE (512 * 1024)
 
-// Memory layout: [Scratch 512KB][Heap ~7.5MB]
+// Heap grows linearly (bump allocator) after the scratch region.
+// Optional temp sub-region at the tail is not used here (TEMP_SIZE=0);
+// kept around so call sites that still reference psram_temp_* keep working.
 #define TEMP_SIZE 0
 #define HEAP_SIZE (PSRAM_SIZE - SCRATCH_SIZE - TEMP_SIZE)
 
-// Free-list allocator for the heap region
-// Block header: [size:31 bits][free:1 bit]
-typedef struct block_header {
-    uint32_t size_and_free;  // Lower 31 bits = size, bit 0 = free flag
-    struct block_header *next_free;  // Only used when block is free
-} block_header_t;
+// Per-allocation header: size (in bytes) of the payload. Needed for realloc.
+// Stored in SRAM-accessible-but-physically-in-PSRAM memory — but because
+// writes here are write-once and we never re-read them through the cache
+// after a subsequent allocation, they aren't vulnerable to the XIP cache
+// coherency issue we see when free-list metadata is updated/read repeatedly.
+// Layout matches murmsnes.
+static size_t psram_offset = 0;      // bump pointer (bytes) within heap
+static size_t psram_temp_offset = 0; // unused: TEMP_SIZE == 0
 
-#define BLOCK_SIZE(h) ((h)->size_and_free & ~1u)
-#define BLOCK_FREE(h) ((h)->size_and_free & 1u)
-#define MIN_BLOCK_SIZE 16  // Minimum allocation (header + 8 bytes data)
-#define HEADER_SIZE sizeof(block_header_t)
-
-static block_header_t *free_list = NULL;
-static int heap_initialized = 0;
-
-// Temp allocator (bump allocator, reset between operations)
-static size_t psram_temp_offset = 0;
 static int psram_temp_mode = 0;
 static int psram_sram_mode = 0;
-
-static void heap_init(void) {
-    if (heap_initialized) return;
-
-    // Initialize heap with one big free block
-    uint8_t *heap_start = psram_start + SCRATCH_SIZE;
-    block_header_t *initial = (block_header_t *)heap_start;
-    initial->size_and_free = (HEAP_SIZE & ~1u) | 1;  // Size with free bit set
-    initial->next_free = NULL;
-    free_list = initial;
-    heap_initialized = 1;
-    // Note: Don't printf here - may cause recursion during early init
-}
 
 void psram_set_temp_mode(int enable) {
     psram_temp_mode = enable;
@@ -83,78 +67,35 @@ void psram_set_ready(int ready) {
     psram_ready = ready;
 }
 
+static inline uint8_t *heap_base(void) {
+    return psram_start + SCRATCH_SIZE;
+}
+
 void *psram_malloc(size_t size) {
     // Before PSRAM is ready, use SRAM (call real libc malloc to avoid wrap recursion)
     if (!psram_ready || psram_sram_mode) {
         return __real_malloc(size);
     }
 
-    // Align size to 8 bytes, ensure minimum
+    // Align size to 8 bytes, minimum 8
     size = (size + 7) & ~7u;
     if (size < 8) size = 8;
 
-    size_t total_size = size + HEADER_SIZE;
-    if (total_size < MIN_BLOCK_SIZE) total_size = MIN_BLOCK_SIZE;
+    // Each allocation: [size_t size | payload...]. Header lets realloc work.
+    size_t total = size + sizeof(size_t);
+    total = (total + 7) & ~7u;
 
-    if (psram_temp_mode) {
-        // Temp mode: bump allocator in temp region
-        if (psram_temp_offset + total_size > TEMP_SIZE) {
-            printf("PSRAM Temp OOM! Req %d, free %d\n",
-                   (int)size, (int)(TEMP_SIZE - psram_temp_offset));
-            return NULL;
-        }
-        uint8_t *ptr = psram_start + SCRATCH_SIZE + HEAP_SIZE + psram_temp_offset;
-        psram_temp_offset += total_size;
-        return ptr;
+    if (psram_offset + total > HEAP_SIZE) {
+        printf("PSRAM Heap OOM! Req %d, free %d\n",
+               (int)size, (int)(HEAP_SIZE - psram_offset));
+        return NULL;
     }
 
-    // Regular mode: free-list allocator
-    heap_init();
-
-    // First-fit search
-    block_header_t *prev = NULL;
-    block_header_t *curr = free_list;
-
-    while (curr) {
-        uint32_t block_size = BLOCK_SIZE(curr);
-        if (block_size >= total_size) {
-            // Found a fit
-            // Split if remainder is large enough
-            if (block_size >= total_size + MIN_BLOCK_SIZE + 32) {
-                // Split block
-                block_header_t *new_block = (block_header_t *)((uint8_t *)curr + total_size);
-                new_block->size_and_free = ((block_size - total_size) & ~1u) | 1;
-                new_block->next_free = curr->next_free;
-
-                curr->size_and_free = (total_size & ~1u);  // Mark allocated (free bit = 0)
-
-                // Update free list
-                if (prev) {
-                    prev->next_free = new_block;
-                } else {
-                    free_list = new_block;
-                }
-            } else {
-                // Use whole block
-                curr->size_and_free &= ~1u;  // Mark allocated
-
-                // Remove from free list
-                if (prev) {
-                    prev->next_free = curr->next_free;
-                } else {
-                    free_list = curr->next_free;
-                }
-            }
-
-            return (void *)((uint8_t *)curr + HEADER_SIZE);
-        }
-        prev = curr;
-        curr = curr->next_free;
-    }
-
-    // No fit found
-    printf("PSRAM Heap OOM! Req %d\n", (int)size);
-    return NULL;
+    size_t *header = (size_t *)(heap_base() + psram_offset);
+    *header = size;
+    void *ptr = (void *)(header + 1);
+    psram_offset += total;
+    return ptr;
 }
 
 void *psram_realloc(void *ptr, size_t new_size) {
@@ -162,12 +103,12 @@ void *psram_realloc(void *ptr, size_t new_size) {
     if (new_size == 0) { psram_free(ptr); return NULL; }
 
     uintptr_t addr = (uintptr_t)ptr;
-    uintptr_t heap_start = PSRAM_BASE + SCRATCH_SIZE;
-    uintptr_t heap_end = heap_start + HEAP_SIZE;
+    uintptr_t heap_lo = PSRAM_BASE + SCRATCH_SIZE;
+    uintptr_t heap_hi = heap_lo + HEAP_SIZE;
 
-    if (addr >= heap_start && addr < heap_end) {
-        block_header_t *header = (block_header_t *)((uint8_t *)ptr - HEADER_SIZE);
-        size_t old_size = BLOCK_SIZE(header) - HEADER_SIZE;
+    if (addr >= heap_lo && addr < heap_hi) {
+        size_t *header = (size_t *)ptr - 1;
+        size_t old_size = *header;
 
         if (new_size <= old_size) {
             return ptr;
@@ -176,7 +117,7 @@ void *psram_realloc(void *ptr, size_t new_size) {
         void *new_ptr = psram_malloc(new_size);
         if (new_ptr) {
             memcpy(new_ptr, ptr, old_size);
-            psram_free(ptr);
+            // psram_free is a no-op for bump allocations.
         }
         return new_ptr;
     }
@@ -188,63 +129,11 @@ void psram_free(void *ptr) {
     if (!ptr) return;
 
     uintptr_t addr = (uintptr_t)ptr;
-    uintptr_t heap_start = PSRAM_BASE + SCRATCH_SIZE;
-    uintptr_t heap_end = heap_start + HEAP_SIZE;
+    uintptr_t heap_lo = PSRAM_BASE + SCRATCH_SIZE;
+    uintptr_t heap_hi = heap_lo + HEAP_SIZE;
 
-    if (addr >= heap_start && addr < heap_end) {
-        // It's in our heap
-        block_header_t *header = (block_header_t *)((uint8_t *)ptr - HEADER_SIZE);
-
-        if (BLOCK_FREE(header)) {
-            // Double free - ignore
-            return;
-        }
-
-        // Mark as free
-        header->size_and_free |= 1;
-
-        // Insert into free list sorted by address (for coalescing)
-        block_header_t *prev = NULL;
-        block_header_t *curr = free_list;
-        while (curr && curr < header) {
-            prev = curr;
-            curr = curr->next_free;
-        }
-
-        // Insert header between prev and curr
-        header->next_free = curr;
-        if (prev) {
-            prev->next_free = header;
-        } else {
-            free_list = header;
-        }
-
-        // Coalesce with next block if adjacent
-        if (curr) {
-            uint8_t *header_end = (uint8_t *)header + BLOCK_SIZE(header);
-            if (header_end == (uint8_t *)curr) {
-                // Merge header and curr
-                header->size_and_free = ((BLOCK_SIZE(header) + BLOCK_SIZE(curr)) & ~1u) | 1;
-                header->next_free = curr->next_free;
-            }
-        }
-
-        // Coalesce with previous block if adjacent
-        if (prev) {
-            uint8_t *prev_end = (uint8_t *)prev + BLOCK_SIZE(prev);
-            if (prev_end == (uint8_t *)header) {
-                // Merge prev and header
-                prev->size_and_free = ((BLOCK_SIZE(prev) + BLOCK_SIZE(header)) & ~1u) | 1;
-                prev->next_free = header->next_free;
-            }
-        }
-        return;
-    }
-
-    // Check if in temp region - do nothing (bump allocator)
-    uintptr_t temp_start = heap_end;
-    uintptr_t temp_end = PSRAM_BASE + PSRAM_SIZE;
-    if (addr >= temp_start && addr < temp_end) {
+    if (addr >= heap_lo && addr < heap_hi) {
+        // Bump allocator — no-op.
         return;
     }
 
@@ -271,40 +160,24 @@ void *psram_get_file_buffer(size_t size) {
 }
 
 void psram_reset(void) {
-    // Reset heap to initial state
-    heap_initialized = 0;
-    free_list = NULL;
-    heap_init();
+    psram_offset = 0;
     psram_temp_offset = 0;
 }
 
 void psram_mark_session(void) {
-    // Not supported with free-list allocator
-    printf("PSRAM: mark_session not supported\n");
+    printf("PSRAM: mark_session not supported (bump allocator)\n");
 }
 
 void psram_restore_session(void) {
-    // Not supported with free-list allocator
-    printf("PSRAM: restore_session not supported\n");
+    printf("PSRAM: restore_session not supported (bump allocator)\n");
 }
 
 void psram_print_status(void) {
-    heap_init();
-
-    // Count free memory
-    size_t free_bytes = 0;
-    size_t free_blocks = 0;
-    block_header_t *curr = free_list;
-    while (curr) {
-        free_bytes += BLOCK_SIZE(curr);
-        free_blocks++;
-        curr = curr->next_free;
-    }
-
     printf("PSRAM Status:\n");
-    printf("  Heap: %lu free in %lu blocks (of %lu total)\n",
-           (unsigned long)free_bytes, (unsigned long)free_blocks,
-           (unsigned long)HEAP_SIZE);
+    printf("  Heap: %lu used / %lu total (%lu free)\n",
+           (unsigned long)psram_offset,
+           (unsigned long)HEAP_SIZE,
+           (unsigned long)(HEAP_SIZE - psram_offset));
     printf("  Temp: %d/%d bytes\n",
            (int)psram_temp_offset, (int)TEMP_SIZE);
 }

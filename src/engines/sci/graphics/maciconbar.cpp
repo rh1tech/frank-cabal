@@ -189,21 +189,11 @@ void GfxMacIconBar::setInventoryIcon(int16 icon) {
 }
 
 Graphics::Surface *GfxMacIconBar::loadPict(ResourceId id) {
-	Resource *res = g_sci->getResMan()->findResource(id, false);
-
-	if (!res || res->size == 0)
-		return 0;
-
-	Image::PICTDecoder pictDecoder;
-	Common::MemoryReadStream stream(res->data, res->size);
-	if (!pictDecoder.loadStream(stream))
-		return 0;
-
-	Graphics::Surface *surface = new Graphics::Surface();
-	surface->copyFrom(*pictDecoder.getSurface());
-	remapColors(surface, pictDecoder.getPalette());
-
-	return surface;
+	// Mac icon bar uses Image::PICTDecoder, which isn't built into this
+	// embedded target. No Mac-flavored SCI1/1.1 games are supported here,
+	// so always return nullptr — the caller treats this as "no icon".
+	(void)id;
+	return 0;
 }
 
 Graphics::Surface *GfxMacIconBar::createImage(uint32 iconIndex, bool isSelected) {

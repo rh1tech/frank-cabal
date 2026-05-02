@@ -134,6 +134,7 @@ set(COMMON_SOURCES
     src/common/winexe.cpp
     src/common/winexe_pe.cpp
     src/common/localization.cpp
+    src/common/dcl.cpp
 )
 
 # ScummVM Graphics library
@@ -466,6 +467,90 @@ set(KYRA_ENGINE_SOURCES
     src/engines/kyra/sound_towns.cpp
 )
 
+# SCI Engine sources (Sierra SCI0 / SCI1 / SCI1.1 — no SCI32, no video)
+set(SCI_ENGINE_SOURCES
+    src/engines/sci/console.cpp
+    src/engines/sci/decompressor.cpp
+    src/engines/sci/detection.cpp
+    src/engines/sci/event.cpp
+    src/engines/sci/resource.cpp
+    src/engines/sci/resource_audio.cpp
+    src/engines/sci/sci.cpp
+    src/engines/sci/util.cpp
+    # engine/*
+    src/engines/sci/engine/features.cpp
+    src/engines/sci/engine/file.cpp
+    src/engines/sci/engine/gc.cpp
+    src/engines/sci/engine/kernel.cpp
+    src/engines/sci/engine/kevent.cpp
+    src/engines/sci/engine/kfile.cpp
+    src/engines/sci/engine/kgraphics.cpp
+    src/engines/sci/engine/klists.cpp
+    src/engines/sci/engine/kmath.cpp
+    src/engines/sci/engine/kmenu.cpp
+    src/engines/sci/engine/kmisc.cpp
+    src/engines/sci/engine/kmovement.cpp
+    src/engines/sci/engine/kparse.cpp
+    src/engines/sci/engine/kpathing.cpp
+    src/engines/sci/engine/kscripts.cpp
+    src/engines/sci/engine/ksound.cpp
+    src/engines/sci/engine/kstring.cpp
+    src/engines/sci/engine/kvideo.cpp
+    src/engines/sci/engine/message.cpp
+    src/engines/sci/engine/object.cpp
+    src/engines/sci/engine/savegame.cpp
+    src/engines/sci/engine/script.cpp
+    src/engines/sci/engine/scriptdebug.cpp
+    src/engines/sci/engine/script_patches.cpp
+    src/engines/sci/engine/selector.cpp
+    src/engines/sci/engine/seg_manager.cpp
+    src/engines/sci/engine/segment.cpp
+    src/engines/sci/engine/state.cpp
+    src/engines/sci/engine/static_selectors.cpp
+    src/engines/sci/engine/vm.cpp
+    src/engines/sci/engine/vm_types.cpp
+    src/engines/sci/engine/workarounds.cpp
+    # graphics/* (SCI16 only)
+    src/engines/sci/graphics/animate.cpp
+    src/engines/sci/graphics/cache.cpp
+    src/engines/sci/graphics/compare.cpp
+    src/engines/sci/graphics/controls16.cpp
+    src/engines/sci/graphics/coordadjuster.cpp
+    src/engines/sci/graphics/cursor.cpp
+    src/engines/sci/graphics/font.cpp
+    src/engines/sci/graphics/fontsjis.cpp
+    src/engines/sci/graphics/maciconbar.cpp
+    src/engines/sci/graphics/menu.cpp
+    src/engines/sci/graphics/paint.cpp
+    src/engines/sci/graphics/paint16.cpp
+    src/engines/sci/graphics/palette.cpp
+    src/engines/sci/graphics/picture.cpp
+    src/engines/sci/graphics/portrait.cpp
+    src/engines/sci/graphics/ports.cpp
+    src/engines/sci/graphics/screen.cpp
+    src/engines/sci/graphics/text16.cpp
+    src/engines/sci/graphics/transitions.cpp
+    src/engines/sci/graphics/view.cpp
+    # parser/*
+    src/engines/sci/parser/grammar.cpp
+    src/engines/sci/parser/said.cpp
+    src/engines/sci/parser/vocabulary.cpp
+    # sound/*
+    src/engines/sci/sound/audio.cpp
+    src/engines/sci/sound/midiparser_sci.cpp
+    src/engines/sci/sound/music.cpp
+    src/engines/sci/sound/soundcmd.cpp
+    src/engines/sci/sound/drivers/adlib.cpp
+    src/engines/sci/sound/drivers/amigamac.cpp
+    src/engines/sci/sound/drivers/cms.cpp
+    src/engines/sci/sound/drivers/fb01.cpp
+    src/engines/sci/sound/drivers/fmtowns.cpp
+    src/engines/sci/sound/drivers/midi.cpp
+    src/engines/sci/sound/drivers/pcjr.cpp
+    # video/* (SEQ only — Robot decoder is SCI32)
+    src/engines/sci/video/seq_decoder.cpp
+)
+
 # SCUMM Engine sources (core v0-v6)
 set(SCUMM_ENGINE_SOURCES
     src/engines/scumm/detection.cpp
@@ -631,6 +716,7 @@ add_executable(frank-cabal
     ${AGI_ENGINE_SOURCES}
     ${GOB_ENGINE_SOURCES}
     ${KYRA_ENGINE_SOURCES}
+    ${SCI_ENGINE_SOURCES}
     # ${SCUMM_ENGINE_SOURCES}   # Full Throttle / SCUMM temporarily disabled
     # ${SCUMM_7_8_SOURCES}      # Full Throttle / SCUMM temporarily disabled
     ${BACKEND_SOURCES}
@@ -671,7 +757,7 @@ target_compile_definitions(frank-cabal PRIVATE
     # Game engines to enable
     ENABLE_AGI=1          # Sierra AGI games
     ENABLE_GOB=1          # Gobliins games
-    # ENABLE_SCI=1        # Sierra SCI games (disabled)
+    ENABLE_SCI=1          # Sierra SCI0/SCI1/SCI1.1 games (no SCI32)
     ENABLE_KYRA=1         # Legend of Kyrandia games
     # ENABLE_SCUMM=1      # LucasArts SCUMM games (temporarily disabled)
     # ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) (temporarily disabled)
