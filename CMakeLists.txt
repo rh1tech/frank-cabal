@@ -78,7 +78,6 @@ add_subdirectory(src/fatfs)
 # Add driver subdirectories
 add_subdirectory(drivers/sdcard)
 add_subdirectory(drivers/ps2)
-add_subdirectory(drivers/ps2kbd)
 
 # USB HID drivers (optional - when enabled, USB serial is disabled)
 if(USB_HID_ENABLED)
@@ -629,11 +628,11 @@ add_executable(frank-cabal
     ${AUDIO_SOURCES}
     ${BASE_SOURCES}
     ${ENGINE_SOURCES}
-    # ${AGI_ENGINE_SOURCES}
-    # ${GOB_ENGINE_SOURCES}
-    # ${KYRA_ENGINE_SOURCES}
-    ${SCUMM_ENGINE_SOURCES}
-    ${SCUMM_7_8_SOURCES}
+    ${AGI_ENGINE_SOURCES}
+    ${GOB_ENGINE_SOURCES}
+    ${KYRA_ENGINE_SOURCES}
+    # ${SCUMM_ENGINE_SOURCES}   # Full Throttle / SCUMM temporarily disabled
+    # ${SCUMM_7_8_SOURCES}      # Full Throttle / SCUMM temporarily disabled
     ${BACKEND_SOURCES}
 )
 
@@ -644,7 +643,7 @@ target_include_directories(frank-cabal PRIVATE
     drivers
     drivers/sdcard
     drivers/ps2
-    drivers/ps2kbd
+    drivers/ps2/kbd
     drivers/audio
 )
 
@@ -670,12 +669,12 @@ target_compile_definitions(frank-cabal PRIVATE
     PICO_AUDIO_I2S_DMA_IRQ=1
 
     # Game engines to enable
-    # ENABLE_AGI=1        # Sierra AGI games (disabled)
-    # ENABLE_GOB=1        # Gobliins games (disabled)
+    ENABLE_AGI=1          # Sierra AGI games
+    ENABLE_GOB=1          # Gobliins games
     # ENABLE_SCI=1        # Sierra SCI games (disabled)
-    # ENABLE_KYRA=1       # Legend of Kyrandia games (disabled)
-    ENABLE_SCUMM=1      # LucasArts SCUMM games
-    ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI)
+    ENABLE_KYRA=1         # Legend of Kyrandia games
+    # ENABLE_SCUMM=1      # LucasArts SCUMM games (temporarily disabled)
+    # ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) (temporarily disabled)
 
     # Memory optimization flags
     CABAL_LOW_MEMORY=1

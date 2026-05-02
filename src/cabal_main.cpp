@@ -25,9 +25,9 @@
 // Kyrandia Engine includes
 #include "kyra/kyra_lok.h"
 
-// SCUMM Engine includes
-#include "scumm/scumm_v7.h"
-#include "scumm/detection.h"
+// SCUMM Engine includes (temporarily disabled along with Full Throttle)
+// #include "scumm/scumm_v7.h"
+// #include "scumm/detection.h"
 
 // Forward declare AGIGameDescription since it's defined in detection.cpp
 namespace Agi {
@@ -622,112 +622,11 @@ static bool launchKyrandiaGame(const char *gamePath) {
     return (err.getCode() == Common::kNoError);
 }
 
-// Full Throttle (SCUMM v7) game launcher
-static bool launchFullThrottleGame(const char *gamePath) {
-    printf("SCUMM: Launching Full Throttle from %s\n", gamePath);
-
-    ConfMan.set("path", gamePath);
-    ConfMan.setActiveDomain("cabal-scumm");
-
-    // Audio/config defaults
-    ConfMan.setInt("music_volume", 192);
-    ConfMan.setInt("sfx_volume", 192);
-    ConfMan.setInt("speech_volume", 192);
-    ConfMan.setBool("mute", false);
-    ConfMan.setBool("speech_mute", false);
-    ConfMan.setBool("sfx_mute", false);
-    ConfMan.setBool("music_mute", false);
-    ConfMan.setInt("autosave_period", 0);
-    ConfMan.setBool("enable_unsupported_game_warning", false);
-    ConfMan.set("music_driver", "adlib");
-    ConfMan.set("gm_device", "null");
-    ConfMan.set("mt32_device", "null");
-    ConfMan.setBool("native_mt32", false);
-    ConfMan.setBool("enable_gs", false);
-    ConfMan.setBool("multi_midi", false);
-    ConfMan.setInt("midi_gain", 100);
-    ConfMan.setBool("subtitles", true);
-    ConfMan.setInt("talkspeed", 60);
-    ConfMan.set("language", "en");
-    ConfMan.set("gfx_mode", "normal");
-    ConfMan.setBool("aspect_ratio", false);
-
-    // SCUMM-specific settings
-    ConfMan.set("gameid", "ft");
-    ConfMan.set("original_gui", "false");
-    ConfMan.setBool("dump_scripts", false);
-    ConfMan.setBool("copy_protection", false);
-    ConfMan.setBool("demo_mode", false);
-    ConfMan.setBool("nosubtitles", false);
-    ConfMan.setBool("confirm_exit", false);
-    ConfMan.setBool("object_labels", true);
-    ConfMan.setBool("filtering", false);
-    ConfMan.setBool("fullscreen", false);
-    ConfMan.setInt("boot_param", 0);
-    ConfMan.setInt("save_slot", -1);
-    ConfMan.setInt("dimuse_tempo", 10);
-    ConfMan.setInt("tempo", 0);
-    ConfMan.set("render_mode", "");
-    ConfMan.set("easter_egg", "");
-
-    printf("SCUMM: Loading plugins...\n");
-    PluginManager::instance().loadAllPlugins();
-
-    // Add game directory to search path
-    Common::FSNode gameDir(gamePath);
-    if (gameDir.exists() && gameDir.isDirectory()) {
-        SearchMan.addDirectory(gamePath, gameDir, 0, 4);
-        printf("SCUMM: Added %s to search path\n", gamePath);
-
-        Common::FSList files;
-        if (gameDir.getChildren(files, Common::FSNode::kListFilesOnly)) {
-            printf("SCUMM: Found %d files in game directory:\n", (int)files.size());
-            for (Common::FSList::iterator it = files.begin(); it != files.end(); ++it) {
-                printf("  - %s\n", it->getName().c_str());
-            }
-        }
-    }
-
-    // Build DetectorResult for Full Throttle (SCUMM v7)
-    Scumm::DetectorResult dr;
-    memset(&dr, 0, sizeof(dr));
-
-    dr.fp.pattern = "ft.la%d";
-    dr.fp.genMethod = Scumm::kGenDiskNum;
-
-    dr.game.gameid = "ft";
-    dr.game.variant = 0;
-    dr.game.preferredTag = 0;
-    dr.game.id = Scumm::GID_FT;
-    dr.game.version = 7;
-    dr.game.heversion = 0;
-    dr.game.midi = 0;    // MDT_NONE
-    dr.game.features = 0;
-    dr.game.platform = Common::kPlatformDOS;
-    dr.game.guioptions = "";
-
-    dr.language = Common::EN_ANY;
-    dr.extra = 0;
-
-    printf("SCUMM: Creating Full Throttle engine (v7)...\n");
-    ::Engine *engine = new Scumm::ScummEngine_v7(g_system, dr);
-
-    printf("SCUMM: Running Full Throttle...\n");
-    Common::Error err = engine->run();
-
-    printf("SCUMM: Game finished with code %d\n", err.getCode());
-    delete engine;
-    return (err.getCode() == Common::kNoError);
-}
+// Full Throttle (SCUMM v7) launcher temporarily disabled.
 
 // Main game loop - called from main.c
 extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
-
-    // Force launch Full Throttle (SCUMM v7)
-    printf("Cabal: Forcing Full Throttle launch from /cabal/ft\n");
-    launchFullThrottleGame("/cabal/ft");
-    return 0;
 
     // Try to launch a Kyrandia game
     const char *kyraPath = nullptr;
