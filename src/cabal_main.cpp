@@ -782,7 +782,12 @@ struct ScummGameInfo {
     uint8_t version;               // 4 or 5 or 6
     const char *extra;             // "", "CD", "VGA", "Floppy", etc.
     uint32_t midi;                 // MDT_* bitmask, 0 for defaults
+    uint32_t features;             // GF_* bitmask (GF_USE_KEY etc.)
 };
+
+// GF_* values from engines/scumm/scumm.h; reproduced so this file doesn't
+// need scumm.h for the table definition.
+#define CABAL_GF_USE_KEY (1u << 4)
 
 // MIDI bitmask shorthands mirror values from engines/scumm/detection_tables.h.
 // MDT_* are defined in audio/mididrv.h; reproduced here so we don't need to
@@ -806,21 +811,21 @@ struct ScummGameInfo {
 
 static const ScummGameInfo kScummGames[] = {
     // --- SCUMM v4 (floppy, .LFL + DISK*.LEC) ---
-    {"mi1",      "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_VGA, 4, "VGA", CABAL_MIDI_MI1_VGA},
-    {"mi1ega",   "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_EGA, 4, "EGA", CABAL_MIDI_MI1_EGA},
-    {"loom",     "loom",    "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_LOOM,       4, "VGA", CABAL_MIDI_LOOM},
+    {"mi1",      "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_VGA, 4, "VGA", CABAL_MIDI_MI1_VGA, 0},
+    {"mi1ega",   "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_EGA, 4, "EGA", CABAL_MIDI_MI1_EGA, 0},
+    {"loom",     "loom",    "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_LOOM,       4, "VGA", CABAL_MIDI_LOOM,    0},
     // --- SCUMM v5 (monkey.000 / monkey2.000 / atlantis.000) ---
-    {"mi1cd",    "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD},
-    {"monkey",   "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD},
-    {"mi2",      "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2},
-    {"monkey2",  "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2},
-    {"atlantis", "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4},
-    {"indy4",    "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4},
-    // --- SCUMM v6 (tentacle.000 / samnmax.000) ---
-    {"dott",     "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT},
-    {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT},
-    {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX},
-    {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX},
+    {"mi1cd",    "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD,  0},
+    {"monkey",   "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD,  0},
+    {"mi2",      "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2,     0},
+    {"monkey2",  "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2,     0},
+    {"atlantis", "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4,   0},
+    {"indy4",    "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4,   0},
+    // --- SCUMM v6 (tentacle.000 / samnmax.000) — need GF_USE_KEY (0x69 XOR) ---
+    {"dott",     "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT,    CABAL_GF_USE_KEY},
+    {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT,    CABAL_GF_USE_KEY},
+    {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX, CABAL_GF_USE_KEY},
+    {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX, CABAL_GF_USE_KEY},
 };
 
 static const ScummGameInfo *findScummGame(const char *gamePath) {
@@ -909,7 +914,12 @@ static bool launchScummGame(const char *gamePath) {
     dr.game.version = info->version;
     dr.game.heversion = 0;
     dr.game.midi = info->midi;
-    dr.game.features = 0;
+    dr.game.features = info->features;
+    // Defensive: v6 SCUMM data files are always XOR-encrypted with 0x69,
+    // so force GF_USE_KEY on every v6 launch regardless of the table entry.
+    if (info->version == 6) {
+        dr.game.features |= CABAL_GF_USE_KEY;
+    }
     dr.game.platform = Common::kPlatformDOS;
     dr.game.guioptions = "";
     dr.language = Common::EN_ANY;
