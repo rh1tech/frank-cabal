@@ -54,13 +54,20 @@ reg_t GameFeatures::getDetectionAddr(const Common::String &objName, Selector slc
 	reg_t addr;
 
 	if (objAddr.isNull()) {
-		error("getDetectionAddr: %s object couldn't be found", objName.c_str());
+		// Cabal: downgrade to warning. Upstream raises error() here, but on
+		// embedded builds we sometimes hit this during the very first frames
+		// (e.g. SQ1 VGA's Sierra-logo room loads scripts 0/99/803 only and
+		// doesn't contain classes like "Motion" or "Sound" yet). Failing the
+		// whole engine on a workaround-detection miss is harsher than the
+		// upstream intent — the caller (autoDetect*) treats NULL_REG as
+		// "couldn't detect" and picks a sensible default.
+		warning("getDetectionAddr: %s object couldn't be found", objName.c_str());
 		return NULL_REG;
 	}
 
 	if (methodNum == -1) {
 		if (lookupSelector(_segMan, objAddr, slc, NULL, &addr) != kSelectorMethod) {
-			error("getDetectionAddr: target selector is not a method of object %s", objName.c_str());
+			warning("getDetectionAddr: target selector is not a method of object %s", objName.c_str());
 			return NULL_REG;
 		}
 	} else {
@@ -641,7 +648,9 @@ MoveCountType GameFeatures::detectMoveCountType() {
 			_moveCountType = kIgnoreMoveCount;
 		} else {
 			if (!autoDetectMoveCountType()) {
-				error("Move count autodetection failed");
+				// Cabal: don't fatal on detection failure — fall back to the
+				// "most games increment" default, same as the comment below.
+				warning("Move count autodetection failed; defaulting to increment");
 				_moveCountType = kIncrementMoveCount;	// Most games do this, so best guess
 			}
 		}

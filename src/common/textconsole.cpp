@@ -90,6 +90,12 @@ void NORETURN_PRE error(const char *s, ...) {
 	buf_output[STRINGBUFLEN - 1] = '\0';
 	strcat(buf_output, "!\n");
 
+	// Cabal: USB-CDC can be the only visible log on embedded builds; always
+	// echo the error message to stdout so we don't lose it when the engine
+	// calls exit() and the trap into __breakpoint kills the console.
+	printf("\n*** ScummVM ERROR: %s", buf_output);
+	fflush(stdout);
+
 	if (g_system)
 		g_system->logMessage(LogMessageType::kError, buf_output);
 	// TODO: Think of a good fallback in case we do not have

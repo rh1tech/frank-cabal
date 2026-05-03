@@ -871,6 +871,24 @@ void ResourceManager::init() {
 
 	_mapVersion = detectMapVersion();
 	_volVersion = detectVolVersion();
+	printf("SCI resMan: mapVer=%d volVer=%d (%s/%s)\n",
+	       (int)_mapVersion, (int)_volVersion,
+	       versionDescription(_mapVersion), versionDescription(_volVersion));
+
+	// Cabal: when the map parser says SCI1-late but the volume auto-detector
+	// overshoots to SCI2/SCI3, trust the map. This project doesn't build the
+	// SCI32 engine at all, and the volume's escalation heuristic produces
+	// false SCI3 positives on some SQ1 VGA re-releases (first resource header
+	// happens to parse under SCI3 rules even though the game is SCI1-late).
+	// Without this override the upstream "Incomplete SCI3 detection" FIXME
+	// branch below promotes both to SCI3 and every view lookup fails.
+	if (_mapVersion != kResVersionUnknown &&
+	    _mapVersion < kResVersionSci2 &&
+	    _volVersion >= kResVersionSci2) {
+		printf("SCI resMan: vol overshoot (%d) - forcing vol to match map (%d)\n",
+		       (int)_volVersion, (int)_mapVersion);
+		_volVersion = _mapVersion;
+	}
 
 	// TODO/FIXME: Remove once SCI3 resource detection is finished
 	if ((_mapVersion == kResVersionSci3 || _volVersion == kResVersionSci3) && (_mapVersion != _volVersion)) {
@@ -886,6 +904,19 @@ void ResourceManager::init() {
 	if ((_mapVersion == kResVersionUnknown) && (_volVersion != kResVersionUnknown)) {
 		warning("Map version not detected, but volume version has been detected. Setting map version to volume version");
 		_mapVersion = _volVersion;
+	}
+
+	// Cabal: within SCI1-era, keep map and volume in lockstep. Same reasoning
+	// as the overshoot guard above — divergence here corrupts every other
+	// resource lookup.
+	if (_mapVersion != kResVersionUnknown &&
+	    _volVersion != kResVersionUnknown &&
+	    _mapVersion != _volVersion &&
+	    _mapVersion < kResVersionSci2 &&
+	    _volVersion < kResVersionSci2) {
+		printf("SCI resMan: map/vol mismatch (%d vs %d) -> forcing vol=map\n",
+		       (int)_mapVersion, (int)_volVersion);
+		_volVersion = _mapVersion;
 	}
 
 	debugC(1, kDebugLevelResMan, "resMan: Detected resource map version %d: %s", _mapVersion, versionDescription(_mapVersion));
