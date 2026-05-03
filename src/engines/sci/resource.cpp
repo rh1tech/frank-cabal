@@ -906,18 +906,10 @@ void ResourceManager::init() {
 		_mapVersion = _volVersion;
 	}
 
-	// Cabal: within SCI1-era, keep map and volume in lockstep. Same reasoning
-	// as the overshoot guard above — divergence here corrupts every other
-	// resource lookup.
-	if (_mapVersion != kResVersionUnknown &&
-	    _volVersion != kResVersionUnknown &&
-	    _mapVersion != _volVersion &&
-	    _mapVersion < kResVersionSci2 &&
-	    _volVersion < kResVersionSci2) {
-		printf("SCI resMan: map/vol mismatch (%d vs %d) -> forcing vol=map\n",
-		       (int)_mapVersion, (int)_volVersion);
-		_volVersion = _mapVersion;
-	}
+	// Cabal: map and volume can legitimately disagree within SCI1-era
+	// (e.g. QFG1VGA has a SCI1-late style map but SCI1.1 DCL-compressed
+	// resources). Leave them alone unless the disagreement is the SCI3
+	// overshoot handled above.
 
 	debugC(1, kDebugLevelResMan, "resMan: Detected resource map version %d: %s", _mapVersion, versionDescription(_mapVersion));
 	debugC(1, kDebugLevelResMan, "resMan: Detected volume version %d: %s", _volVersion, versionDescription(_volVersion));
