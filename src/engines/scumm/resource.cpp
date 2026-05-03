@@ -686,7 +686,15 @@ int ScummEngine::loadResource(ResType type, ResId idx) {
 		size = _fileHandle->readUint32BE();
 		_fileHandle->seek(-8, SEEK_CUR);
 	}
-	_fileHandle->read(_res->createResource(type, idx, size), size);
+	{
+		byte *buf = _res->createResource(type, idx, size);
+		if (!buf) {
+			printf("createResource FAILED type=%s idx=%d size=%u — likely PSRAM OOM\n",
+			       nameOfResType(type), (int)idx, (unsigned)size);
+			error("createResource failed");
+		}
+		_fileHandle->read(buf, size);
+	}
 
 	// dump the resource if requested
 	if (_dumpScripts && type == rtScript) {
@@ -694,6 +702,8 @@ int ScummEngine::loadResource(ResType type, ResId idx) {
 	}
 
 	if (_fileHandle->err() || _fileHandle->eos()) {
+		printf("Cannot read resource: type=%s idx=%d room=%d size=%u fileOffs=%u\n",
+		       nameOfResType(type), (int)idx, roomNr, (unsigned)size, (unsigned)fileOffs);
 		error("Cannot read resource");
 	}
 

@@ -135,8 +135,12 @@ static void mouse_enable_irq(void) {
     // Enable RXNEMPTY interrupt for mouse state machine on IRQ index 1
     pio_set_irqn_source_enabled(ps2_pio, 1, pis_sm0_rx_fifo_not_empty + mouse_sm, true);
 
-    // Set up interrupt handler
+    // Set up interrupt handler. Give the mouse IRQ a higher priority
+    // (lower numeric value) than the audio DMA IRQ so PS/2 bit capture
+    // can preempt the OPL synth refill — otherwise a slow mixer frame
+    // drops PS/2 bytes mid-packet and the cursor stutters.
     irq_set_exclusive_handler(irq_num, mouse_pio_irq_handler);
+    irq_set_priority(irq_num, 0x40); // high priority
     irq_set_enabled(irq_num, true);
 }
 
