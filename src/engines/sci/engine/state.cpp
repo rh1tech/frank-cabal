@@ -173,6 +173,11 @@ uint16 EngineState::currentRoomNumber() const {
 }
 
 void EngineState::setRoomNumber(uint16 roomNumber) {
+	uint16 prev = variables[VAR_GLOBAL][13].toUint16();
+	if (prev != roomNumber) {
+		printf("SCI: room %u -> %u (t=%u ms)\n",
+		       prev, roomNumber, g_system->getMillis());
+	}
 	variables[VAR_GLOBAL][13] = make_reg(0, roomNumber);
 }
 

@@ -539,6 +539,8 @@ reg_t kOnControl(EngineState *s, int argc, reg_t *argv) {
 
 reg_t kDrawPic(EngineState *s, int argc, reg_t *argv) {
 	GuiResourceId pictureId = argv[0].toUint16();
+	printf("SCI: kDrawPic(%u) room=%u t=%u\n",
+	       pictureId, s->currentRoomNumber(), g_system->getMillis());
 	uint16 flags = 0;
 	int16 animationNr = -1;
 	bool animationBlackoutFlag = false;

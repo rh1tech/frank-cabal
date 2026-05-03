@@ -513,8 +513,6 @@ static void mouse_process_packet(void) {
 
     // Debug: Log button state changes
     if (new_buttons != mouse_last_buttons) {
-        printf("PS2: Button state changed: 0x%02X -> 0x%02X (packet #%lu, status=0x%02X)\n",
-               mouse_last_buttons, new_buttons, mouse_valid_packet_count, status);
         mouse_last_buttons = new_buttons;
 
         // Track when buttons are pressed for timeout detection

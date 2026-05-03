@@ -234,6 +234,12 @@ void OSystem_RP2350::updateScreen() {
 	// Push to display
 	cabal_update_screen();
 
+	// Drive the DefaultTimerManager — SCI's music/sound engine and
+	// several other subsystems register ~60 Hz callbacks here, and
+	// without the pulse cutscenes and fades stall mid-sequence.
+	if (_timerManager)
+		static_cast<DefaultTimerManager *>(_timerManager)->handler();
+
 #ifdef USE_I2S_AUDIO
 	// Process audio - mix and send to I2S
 	cabal_audio_process_frame();
@@ -357,6 +363,8 @@ void OSystem_RP2350::delayMillis(uint msecs) {
 		cabal_delay(chunk);
 		msecs -= chunk;
 		cabal_audio_process_frame();
+		if (_timerManager)
+			static_cast<DefaultTimerManager *>(_timerManager)->handler();
 	}
 #else
 	cabal_delay(msecs);
@@ -364,10 +372,12 @@ void OSystem_RP2350::delayMillis(uint msecs) {
 }
 
 void OSystem_RP2350::getTimeAndDate(TimeDate &t) const {
-	// Return a default time (no RTC on board)
-	t.tm_sec = 0;
-	t.tm_min = 0;
-	t.tm_hour = 12;
+	// No RTC on board; synthesize a monotonic wall-clock from boot time
+	// so that games using mode-1/mode-2 kGetTime (wall-clock) see time advance.
+	uint32 secs = cabal_get_millis() / 1000;
+	t.tm_sec = secs % 60;
+	t.tm_min = (secs / 60) % 60;
+	t.tm_hour = (secs / 3600) % 24;
 	t.tm_mday = 1;
 	t.tm_mon = 0;
 	t.tm_year = 125;  // 2025

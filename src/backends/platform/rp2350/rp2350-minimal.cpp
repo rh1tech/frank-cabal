@@ -309,10 +309,7 @@ void cabal_update_screen(void) {
     uint32_t elapsed = time_us_32() - start;
     total_update_time += elapsed;
     update_count++;
-    if (update_count == 60) {
-        printf("PERF: 60 screen updates took %lu us (avg %lu us = %lu fps)\n",
-               total_update_time, total_update_time / 60,
-               60000000 / total_update_time);
+    if (update_count == 600) {
         total_update_time = 0;
         update_count = 0;
     }
@@ -577,8 +574,6 @@ bool cabal_poll_event(CabalEvent *event) {
                 if (buttons & 1) {
                     g_last_click_time = time_us_32();
                     g_click_count++;
-                    printf("PROFILE: CLICK #%lu at t=%lu us, pos=(%d,%d)\n",
-                           g_click_count, g_last_click_time, g_state.mouseX, g_state.mouseY);
                 }
                 return true;
             }
@@ -609,8 +604,7 @@ bool cabal_poll_event(CabalEvent *event) {
             // PROFILING: Count motion events for FPS
             motion_events_this_second++;
             uint32_t now = time_us_32();
-            if (now - last_fps_report >= 1000000) {  // Every second
-                printf("PROFILE: Motion FPS=%lu events/sec\n", motion_events_this_second);
+            if (now - last_fps_report >= 1000000) {
                 motion_events_this_second = 0;
                 last_fps_report = now;
             }
@@ -624,9 +618,7 @@ bool cabal_poll_event(CabalEvent *event) {
     uint32_t elapsed = time_us_32() - start;
     total_poll_time += elapsed;
     poll_count++;
-    if (poll_count == 100) {
-        printf("PERF: 100 polls took %lu us (avg %lu), mouse %lu us\n",
-               total_poll_time, total_poll_time / 100, total_mouse_time);
+    if (poll_count == 1000) {
         total_poll_time = 0;
         total_mouse_time = 0;
         poll_count = 0;

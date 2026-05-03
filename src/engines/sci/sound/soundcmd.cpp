@@ -129,6 +129,10 @@ void SoundCommandParser::processInitSound(reg_t obj) {
 
 	initSoundResource(newSound);
 
+	printf("SCI initSound resId=%d hasRes=%d hasStream=%d prio=%d\n",
+	       resourceId, newSound->soundRes ? 1 : 0,
+	       newSound->pStreamAud ? 1 : 0, newSound->priority);
+
 	_music->pushBackSlot(newSound);
 
 	if (newSound->soundRes || newSound->pStreamAud) {
@@ -461,6 +465,24 @@ void SoundCommandParser::processUpdateCues(reg_t obj) {
 	if (!musicSlot) {
 		warning("kDoSound(updateCues): Slot not found (%04x:%04x)", PRINT_REG(obj));
 		return;
+	}
+
+	// Log only when something actually changes for this slot
+	if (musicSlot->pMidiParser || musicSlot->pStreamAud) {
+		static reg_t lastObj = NULL_REG;
+		static int lastStatus = -1;
+		static int lastSignal = -999;
+		static int lastDataInc = -1;
+		if (!(obj == lastObj) || lastStatus != musicSlot->status ||
+		    lastSignal != musicSlot->signal || lastDataInc != musicSlot->dataInc) {
+			printf("SCI upd cues obj=%04x:%04x status=%d sig=%d dataInc=%d\n",
+			       PRINT_REG(obj), musicSlot->status,
+			       musicSlot->signal, musicSlot->dataInc);
+			lastObj = obj;
+			lastStatus = musicSlot->status;
+			lastSignal = musicSlot->signal;
+			lastDataInc = musicSlot->dataInc;
+		}
 	}
 
 	if (musicSlot->pStreamAud) {
