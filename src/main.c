@@ -133,6 +133,13 @@ int main(void) {
     }
     printf("Go!\n\n");
 
+    // USB-CDC has had time to reconnect after a watchdog-triggered
+    // reboot; now replay any crash record the previous run stashed in
+    // .uninitialized_data. Always prints a one-liner indicating whether
+    // a valid magic was found, even when there's nothing to report.
+    extern void cabal_report_previous_crash(void);
+    cabal_report_previous_crash();
+
     // Initialize PSRAM
     printf("Initializing PSRAM...\n");
     uint psram_pin = get_psram_pin();

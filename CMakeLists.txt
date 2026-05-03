@@ -107,8 +107,16 @@ target_compile_definitions(drivers PRIVATE
 )
 # dlmalloc compiled in mspace-only mode — real malloc/free inside PSRAM,
 # isolated from newlib's SRAM heap.
+#
+# FOOTERS=1 adds an 8-byte magic footer to every chunk. Any bad free, double
+# free or overrun past a chunk's usable size is caught on the next malloc/free
+# rather than silently corrupting the free list and crashing much later (the
+# crash we saw was inside tmalloc_large / mspace_free on a stale free-list
+# pointer — the actual buggy write happened somewhere unrelated in time).
+# USAGE_ERROR_ACTION / CORRUPTION_ERROR_ACTION route to cabal_heap_error so the
+# diagnostic survives the expected trap that follows.
 set_source_files_properties(drivers/dlmalloc.c PROPERTIES COMPILE_DEFINITIONS
-    "ONLY_MSPACES=1;HAVE_MMAP=0;HAVE_MORECORE=0;NO_MALLOC_STATS=1;USE_LOCKS=0;ABORT_ON_ASSERT_FAILURE=0;MALLOC_FAILURE_ACTION=;LACKS_SYS_MMAN_H=1;LACKS_UNISTD_H=1;LACKS_SYS_PARAM_H=1")
+    "ONLY_MSPACES=1;HAVE_MMAP=0;HAVE_MORECORE=0;NO_MALLOC_STATS=1;USE_LOCKS=0;ABORT_ON_ASSERT_FAILURE=0;MALLOC_FAILURE_ACTION=;LACKS_SYS_MMAN_H=1;LACKS_UNISTD_H=1;LACKS_SYS_PARAM_H=1;FOOTERS=1;PROCEED_ON_ERROR=0")
 target_link_libraries(drivers pico_stdlib hardware_dma hardware_pio hardware_spi)
 
 # ScummVM Common library
@@ -585,7 +593,7 @@ set(SCUMM_ENGINE_SOURCES
     src/engines/scumm/help.cpp
     src/engines/scumm/input.cpp
     src/engines/scumm/midiparser_ro.cpp
-    # nut_renderer.cpp — v7/v8 SMUSH font renderer
+    src/engines/scumm/nut_renderer.cpp
     src/engines/scumm/object.cpp
     src/engines/scumm/palette.cpp
     src/engines/scumm/resource.cpp
@@ -728,7 +736,7 @@ add_executable(frank-cabal
     ${KYRA_ENGINE_SOURCES}
     ${SCI_ENGINE_SOURCES}
     ${SCUMM_ENGINE_SOURCES}
-    # ${SCUMM_7_8_SOURCES}  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) — disabled
+    ${SCUMM_7_8_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -771,7 +779,7 @@ target_compile_definitions(frank-cabal PRIVATE
     ENABLE_SCI=1          # Sierra SCI0/SCI1/SCI1.1 games (no SCI32)
     ENABLE_KYRA=1         # Legend of Kyrandia games
     ENABLE_SCUMM=1        # LucasArts SCUMM v0-v6 (MI1/MI2/DOTT/Sam&Max/FOA/LOOM/etc)
-    # ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) — disabled
+    ENABLE_SCUMM_7_8=1    # SCUMM v7 (Full Throttle); v8 not tested
 
     # Memory optimization flags
     CABAL_LOW_MEMORY=1
@@ -828,6 +836,7 @@ target_link_libraries(frank-cabal
     hardware_pwm
     hardware_irq
     hardware_flash
+    hardware_watchdog
     fatfs
     sdcard
     ps2_driver

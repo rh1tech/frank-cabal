@@ -8,6 +8,7 @@
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include "hardware/pio.h"
+#include "hardware/watchdog.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -20,55 +21,151 @@
 #endif
 
 //============================================================================
-// Hard Fault Handler - catches crashes and prints diagnostic info
+// Hard Fault Handler
+//
+// USB-CDC stdout is unreliable from an exception context (the host side
+// often drops the final bytes, and a crashed IRQ context can stall the
+// USB stack outright). Instead we persist a crash record in SRAM that
+// survives a warm reset, trigger the watchdog, and let the next boot
+// replay the dump over USB while the host is still listening.
 //============================================================================
 
-extern "C" void isr_hardfault(void) __attribute__((naked));
-extern "C" void isr_hardfault(void) {
-    __asm volatile (
-        "mrs r0, msp\n"           // Get main stack pointer
-        "b hard_fault_handler_c\n"
-    );
+extern "C" {
+
+typedef struct {
+    uint32_t magic;        // CABAL_CRASH_MAGIC if valid
+    uint32_t fault_src;    // which handler fired: 1=hard, 2=mem, 3=bus, 4=usage, 5=secure
+    uint32_t pc;
+    uint32_t lr;
+    uint32_t exc_lr;
+    uint32_t sp;
+    uint32_t cfsr;
+    uint32_t hfsr;
+    uint32_t bfar;
+    uint32_t mmfar;
+    uint32_t r0, r1, r2, r3, r12;
+    uint32_t pc_mem[6];    // 24 bytes around PC (pc-8 .. pc+12)
+} cabal_crash_dump_t;
+
+#define CABAL_CRASH_MAGIC 0xCABA1DEA
+
+// NOLOAD in the linker script means this region is not zeroed by the CRT,
+// so the data survives a warm reset (watchdog, soft reset). It is junk on
+// cold power-on — guarded by the magic word.
+cabal_crash_dump_t g_cabal_crash
+    __attribute__((section(".uninitialized_data"), used));
+
+} // extern "C"
+
+#define DEFINE_FAULT_ENTRY(name, src)                            \
+    extern "C" void name(void) __attribute__((naked, used));     \
+    extern "C" void name(void) {                                 \
+        __asm volatile (                                         \
+            "tst  lr, #4               \n"                       \
+            "ite  eq                   \n"                       \
+            "mrseq r0, msp             \n"                       \
+            "mrsne r0, psp             \n"                       \
+            "mov  r1, lr               \n"                       \
+            "mov  r2, %0               \n"                       \
+            "b    hard_fault_handler_c \n"                       \
+            :: "i"(src) : "r0", "r1", "r2");                     \
+    }
+
+DEFINE_FAULT_ENTRY(isr_hardfault,   1)
+DEFINE_FAULT_ENTRY(isr_memmanage,   2)
+DEFINE_FAULT_ENTRY(isr_busfault,    3)
+DEFINE_FAULT_ENTRY(isr_usagefault,  4)
+DEFINE_FAULT_ENTRY(isr_securefault, 5)
+
+extern "C" void hard_fault_handler_c(uint32_t *stack, uint32_t exc_lr, uint32_t src) {
+    // Stack frame: r0, r1, r2, r3, r12, lr, pc, xpsr
+    g_cabal_crash.magic     = CABAL_CRASH_MAGIC;
+    g_cabal_crash.fault_src = src;
+    g_cabal_crash.pc        = stack[6];
+    g_cabal_crash.lr        = stack[5];
+    g_cabal_crash.exc_lr    = exc_lr;
+    g_cabal_crash.sp        = (uint32_t)stack;
+    g_cabal_crash.cfsr      = *(volatile uint32_t *)0xE000ED28;
+    g_cabal_crash.hfsr      = *(volatile uint32_t *)0xE000ED2C;
+    g_cabal_crash.bfar      = *(volatile uint32_t *)0xE000ED38;
+    g_cabal_crash.mmfar     = *(volatile uint32_t *)0xE000ED34;
+    g_cabal_crash.r0        = stack[0];
+    g_cabal_crash.r1        = stack[1];
+    g_cabal_crash.r2        = stack[2];
+    g_cabal_crash.r3        = stack[3];
+    g_cabal_crash.r12       = stack[4];
+
+    // Snapshot 24 bytes around PC if it looks like a reasonable code
+    // address (XIP flash / SRAM). Don't dereference wild pointers.
+    uint32_t pc = g_cabal_crash.pc;
+    bool pc_readable =
+        (pc >= 0x10000000u && pc < 0x20000000u) ||  // XIP flash / PSRAM
+        (pc >= 0x20000000u && pc < 0x20100000u);    // SRAM
+    for (int i = 0; i < 6; i++) {
+        g_cabal_crash.pc_mem[i] = pc_readable
+            ? ((uint32_t *)(pc - 8))[i]
+            : 0xDEADC0DE;
+    }
+
+    __asm volatile ("dsb 0xF" ::: "memory");
+
+    // Reset via watchdog — preserves .uninitialized_data and gets us
+    // back to main() where we can flush the dump over a healthy USB-CDC
+    // connection. 50 ms gives time for any in-flight DMA to drain.
+    watchdog_reboot(0, 0, 50);
+    for (;;) tight_loop_contents();
 }
 
-extern "C" void hard_fault_handler_c(uint32_t *stack) {
-    // Stack frame: r0, r1, r2, r3, r12, lr, pc, xpsr
-    uint32_t r0  = stack[0];
-    uint32_t r1  = stack[1];
-    uint32_t r2  = stack[2];
-    uint32_t r3  = stack[3];
-    uint32_t r12 = stack[4];
-    uint32_t lr  = stack[5];
-    uint32_t pc  = stack[6];
-    uint32_t psr = stack[7];
+// Called from main() once stdio (USB-CDC) is up. If we got here via a
+// crash reboot, replay the preserved crash record and clear the magic
+// so the dump doesn't get printed on every subsequent reset.
+extern "C" void cabal_report_previous_crash(void) {
+    // Always print the marker so we can see whether this function ran at
+    // all. If .uninitialized_data survived but the magic was never set,
+    // the previous boot either didn't crash or didn't reach the handler.
+    printf("Cabal: crash-dump check: magic=0x%08lx src=%lu\n",
+           (unsigned long)g_cabal_crash.magic,
+           (unsigned long)g_cabal_crash.fault_src);
 
-    printf("\n\n*** HARD FAULT ***\n");
-    printf("PC:  0x%08lx (crashed here)\n", pc);
-    printf("LR:  0x%08lx (called from)\n", lr);
-    printf("PSR: 0x%08lx\n", psr);
-    printf("R0:  0x%08lx  R1: 0x%08lx\n", r0, r1);
-    printf("R2:  0x%08lx  R3: 0x%08lx\n", r2, r3);
-    printf("R12: 0x%08lx\n", r12);
-    printf("SP:  0x%08lx\n", (uint32_t)stack);
+    if (g_cabal_crash.magic != CABAL_CRASH_MAGIC) return;
 
-    // Check for stack overflow
-    extern char __StackLimit;
-    if ((uint32_t)stack < (uint32_t)&__StackLimit) {
-        printf("*** STACK OVERFLOW DETECTED ***\n");
+    const char *src_name;
+    switch (g_cabal_crash.fault_src) {
+        case 1: src_name = "HardFault";    break;
+        case 2: src_name = "MemManage";    break;
+        case 3: src_name = "BusFault";     break;
+        case 4: src_name = "UsageFault";   break;
+        case 5: src_name = "SecureFault";  break;
+        default: src_name = "unknown";     break;
     }
 
-    // Print memory around crash
-    printf("Memory at PC-8: ");
-    for (int i = -2; i < 4; i++) {
-        printf("%08lx ", ((uint32_t*)pc)[i]);
+    printf("\n\n*** %s (recovered after reboot) ***\n", src_name);
+    printf("PC:   0x%08lx  LR:   0x%08lx\n",
+           (unsigned long)g_cabal_crash.pc,
+           (unsigned long)g_cabal_crash.lr);
+    printf("EXC_LR: 0x%08lx  SP: 0x%08lx\n",
+           (unsigned long)g_cabal_crash.exc_lr,
+           (unsigned long)g_cabal_crash.sp);
+    printf("CFSR: 0x%08lx  HFSR: 0x%08lx\n",
+           (unsigned long)g_cabal_crash.cfsr,
+           (unsigned long)g_cabal_crash.hfsr);
+    printf("BFAR: 0x%08lx  MMFAR: 0x%08lx\n",
+           (unsigned long)g_cabal_crash.bfar,
+           (unsigned long)g_cabal_crash.mmfar);
+    printf("R0:   0x%08lx  R1:   0x%08lx\n",
+           (unsigned long)g_cabal_crash.r0,
+           (unsigned long)g_cabal_crash.r1);
+    printf("R2:   0x%08lx  R3:   0x%08lx\n",
+           (unsigned long)g_cabal_crash.r2,
+           (unsigned long)g_cabal_crash.r3);
+    printf("R12:  0x%08lx\n", (unsigned long)g_cabal_crash.r12);
+    printf("Code around PC (pc-8..pc+12):\n ");
+    for (int i = 0; i < 6; i++) {
+        printf(" %08lx", (unsigned long)g_cabal_crash.pc_mem[i]);
     }
-    printf("\n");
+    printf("\n*** END CRASH DUMP ***\n\n");
 
-    // Hang with LED blinking pattern
-    while (1) {
-        for (volatile int i = 0; i < 500000; i++);
-        printf(".");
-    }
+    g_cabal_crash.magic = 0;
 }
 
 //============================================================================

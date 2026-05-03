@@ -33,6 +33,7 @@
 #include "scumm/scumm_v4.h"
 #include "scumm/scumm_v5.h"
 #include "scumm/scumm_v6.h"
+#include "scumm/scumm_v7.h"
 #include "scumm/detection.h"
 
 // Forward declare AGIGameDescription since it's defined in detection.cpp
@@ -808,6 +809,9 @@ struct ScummGameInfo {
 #define CABAL_MIDI_LOOM     (CABAL_MDT_PCSPK | CABAL_MDT_PCJR | CABAL_MDT_CMS | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
 #define CABAL_MIDI_DOTT     (CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_GM)
 #define CABAL_MIDI_SAMNMAX  (CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_GM)
+// Full Throttle is digital-only (iMUSE Digital); it doesn't use the classic
+// MIDI synth chain and the detection table marks it MDT_NONE.
+#define CABAL_MIDI_FT       (0)
 
 static const ScummGameInfo kScummGames[] = {
     // --- SCUMM v4 (floppy, .LFL + DISK*.LEC) ---
@@ -826,6 +830,9 @@ static const ScummGameInfo kScummGames[] = {
     {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT,    CABAL_GF_USE_KEY},
     {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX, CABAL_GF_USE_KEY},
     {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX, CABAL_GF_USE_KEY},
+    // --- SCUMM v7 (ft.la%d / dig.la%d) — digital audio + SMUSH video ---
+    {"ft",       "ft",      "ft.la%d",       Scumm::kGenDiskNum, Scumm::GID_FT,         7, "",    CABAL_MIDI_FT,      0},
+    {"fulltp",   "ft",      "ft.la%d",       Scumm::kGenDiskNum, Scumm::GID_FT,         7, "",    CABAL_MIDI_FT,      0},
 };
 
 static const ScummGameInfo *findScummGame(const char *gamePath) {
@@ -958,6 +965,10 @@ static bool launchScummGame(const char *gamePath) {
         printf("SCUMM: Creating v6 engine...\n");
         engine = new Scumm::ScummEngine_v6(g_system, dr);
         break;
+    case 7:
+        printf("SCUMM: Creating v7 engine...\n");
+        engine = new Scumm::ScummEngine_v7(g_system, dr);
+        break;
     default:
         printf("SCUMM: unsupported version %d\n", info->version);
         return false;
@@ -983,6 +994,7 @@ extern "C" int cabal_main(void) {
         "/cabal/samnmax", "/cabal/sam",
         "/cabal/atlantis", "/cabal/indy4",
         "/cabal/loom",
+        "/cabal/ft", "/cabal/fulltp",
         nullptr,
     };
     for (int i = 0; scummDirs[i]; i++) {

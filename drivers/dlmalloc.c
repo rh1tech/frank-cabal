@@ -1,3 +1,11 @@
+/* Cabal hooks: route dlmalloc's detected-error actions to our diagnostic
+ * trap so heap corruption is caught the first time it's observed, not
+ * later when the free list is already scrambled. See psram_allocator.c. */
+void cabal_heap_error(void *m, void *p);
+void cabal_heap_corruption(void *m);
+#define USAGE_ERROR_ACTION(m, p)      cabal_heap_error((void*)(m), (void*)(p))
+#define CORRUPTION_ERROR_ACTION(m)    cabal_heap_corruption((void*)(m))
+
 /*
   This is a version (aka dlmalloc) of malloc/free/realloc written by
   Doug Lea and released to the public domain, as explained at
