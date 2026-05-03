@@ -290,7 +290,6 @@ bool ResLoaderPak::isLoadable(const Common::String &filename, Common::SeekableRe
 
 Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common::SeekableReadStream &stream) const {
 	int32 filesize = stream.size();
-	printf("KYRA PAK: load() start, filesize=%d\n", filesize);
 	if (filesize < 0)
 		return 0;
 
@@ -308,11 +307,8 @@ Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common:
 		switchEndian = true;
 		startoffset = SWAP_BYTES_32(startoffset);
 	}
-	printf("KYRA PAK: firstOffset=%d (header ends here, ~%d entries expected)\n",
-		firstOffset, firstOffset / 13);
 
 	Common::String file;
-	int entryCount = 0;
 	while (!stream.eos()) {
 		// The start offset of a file should never be in the filelist
 		if (startoffset < stream.pos() || startoffset > filesize || startoffset < 0) {
@@ -320,12 +316,7 @@ Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common:
 			return 0;
 		}
 
-		if (entryCount > 2045)
-			printf("KYRA PAK: reading entry %d at pos=%d...\n", entryCount+1, (int)stream.pos());
 		file = readString(stream);
-		entryCount++;
-		if (entryCount % 500 == 0 || entryCount > 2045)
-			printf("KYRA PAK: entry %d name='%s' len=%d\n", entryCount, file.c_str(), file.size());
 
 		if (stream.eos()) {
 			warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
@@ -343,11 +334,7 @@ Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common:
 		}
 
 		firstFile = false;
-		if (entryCount > 2045)
-			printf("KYRA PAK: %d reading offset...\n", entryCount);
 		endoffset = switchEndian ? stream.readUint32BE() : stream.readUint32LE();
-		if (entryCount > 2045)
-			printf("KYRA PAK: %d endoffset=%d\n", entryCount, endoffset);
 
 		if (endoffset < 0 && stream.pos() != firstOffset) {
 			warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
@@ -358,12 +345,7 @@ Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common:
 			endoffset = filesize;
 
 		if (startoffset != endoffset) {
-			if (entryCount == 2051) {
-				printf("KYRA PAK: 2051 inserting '%s'...\n", file.c_str());
-			}
 			result->addFileEntry(file, PlainArchive::Entry(startoffset, endoffset - startoffset));
-			if (entryCount == 2051)
-				printf("KYRA PAK: 2051 added OK\n");
 		}
 
 		if (endoffset == filesize)
@@ -372,10 +354,8 @@ Common::Archive *ResLoaderPak::load(Common::ArchiveMemberPtr memberFile, Common:
 		startoffset = endoffset;
 	}
 
-	printf("KYRA PAK: header parsed, checking LINKLIST...\n");
 	PlainArchive::Entry linklistFile = result->getFileEntry("LINKLIST");
 	if (linklistFile.size != 0) {
-		printf("KYRA PAK: LINKLIST found (offset=%d, size=%d)\n", linklistFile.offset, linklistFile.size);
 		stream.seek(linklistFile.offset, SEEK_SET);
 
 		const uint32 magic = stream.readUint32BE();

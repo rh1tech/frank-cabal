@@ -24,6 +24,7 @@
 
 // Kyrandia Engine includes
 #include "kyra/kyra_lok.h"
+#include "kyra/kyra_hof.h"
 
 // SCI Engine includes
 #include "sci/sci.h"
@@ -563,8 +564,11 @@ extern "C" void cabal_init(void) {
 }
 
 // Kyrandia game launcher
-static bool launchKyrandiaGame(const char *gamePath) {
-    printf("KYRA: Launching game from %s\n", gamePath);
+// gameId: 0 = Kyrandia 1 (Legend of Kyrandia), 1 = Kyrandia 2 (Hand of Fate).
+static bool launchKyrandiaGame(const char *gamePath, int gameId) {
+    printf("KYRA: Launching %s from %s\n",
+           gameId == 1 ? "Kyrandia 2 (Hand of Fate)" : "Kyrandia 1 (Legend of Kyrandia)",
+           gamePath);
 
     ConfMan.set("path", gamePath);
     ConfMan.setActiveDomain("cabal-kyra");
@@ -599,27 +603,28 @@ static bool launchKyrandiaGame(const char *gamePath) {
         printf("KYRA: Added %s to search path\n", gamePath);
     }
 
-    // Create game description for Kyrandia 1
     static KYRAGameDescription gameDesc;
     memset(&gameDesc, 0, sizeof(gameDesc));
 
-    gameDesc.desc.gameid = "kyra1";
-    gameDesc.desc.extra = "Floppy";
-    gameDesc.desc.language = Common::EN_ANY;
-    gameDesc.desc.platform = Common::kPlatformDOS;
-    gameDesc.desc.flags = ADGF_NO_FLAGS;
+    gameDesc.desc.gameid    = (gameId == 1) ? "kyra2" : "kyra1";
+    gameDesc.desc.extra     = "Floppy";
+    gameDesc.desc.language  = Common::EN_ANY;
+    gameDesc.desc.platform  = Common::kPlatformDOS;
+    gameDesc.desc.flags     = ADGF_NO_FLAGS;
     gameDesc.desc.guioptions = "";
 
-    gameDesc.flags.gameID = Kyra::GI_KYRA1;
-    gameDesc.flags.lang = Common::EN_ANY;
-    gameDesc.flags.platform = Common::kPlatformDOS;
-    gameDesc.flags.isTalkie = false;
-    gameDesc.flags.isDemo = false;
-    gameDesc.flags.useHiRes = false;
+    gameDesc.flags.gameID      = (gameId == 1) ? Kyra::GI_KYRA2 : Kyra::GI_KYRA1;
+    gameDesc.flags.lang        = Common::EN_ANY;
+    gameDesc.flags.platform    = Common::kPlatformDOS;
+    gameDesc.flags.isTalkie    = false;
+    gameDesc.flags.isDemo      = false;
+    gameDesc.flags.useHiRes    = false;
     gameDesc.flags.useDigSound = false;
 
     printf("KYRA: Creating engine...\n");
-    ::Engine *engine = new Kyra::KyraEngine_LoK(g_system, gameDesc.flags);
+    ::Engine *engine = (gameId == 1)
+        ? (::Engine *)new Kyra::KyraEngine_HoF(g_system, gameDesc.flags)
+        : (::Engine *)new Kyra::KyraEngine_LoK(g_system, gameDesc.flags);
 
     printf("KYRA: Running game...\n");
     Common::Error err = engine->run();
@@ -1038,18 +1043,27 @@ extern "C" int cabal_main(void) {
         }
     }
 
-    // Try to launch a Kyrandia game
-    const char *kyraPath = nullptr;
-    if (cabal_path_exists("/cabal/kyra1")) kyraPath = "/cabal/kyra1";
-    else if (cabal_path_exists("/cabal/kyr1")) kyraPath = "/cabal/kyr1";
-    else if (cabal_path_exists("/cabal/kyrandia")) kyraPath = "/cabal/kyrandia";
-    if (kyraPath) {
-        printf("Cabal: Found Kyrandia directory at %s, launching...\n", kyraPath);
-        if (launchKyrandiaGame(kyraPath)) {
+    // Try to launch a Kyrandia game. Kyra 2 first so "/cabal/kyra2" wins
+    // unambiguously when both directories exist.
+    struct KyraProbe { const char *path; int gameId; };
+    static const KyraProbe kKyraProbes[] = {
+        {"/cabal/kyra2",     1},
+        {"/cabal/kyr2",      1},
+        {"/cabal/kyrandia2", 1},
+        {"/cabal/handoffate",1},
+        {"/cabal/kyra1",     0},
+        {"/cabal/kyr1",      0},
+        {"/cabal/kyrandia",  0},
+    };
+    for (const auto &p : kKyraProbes) {
+        if (!cabal_path_exists(p.path)) continue;
+        printf("Cabal: Found Kyrandia directory at %s, launching...\n", p.path);
+        if (launchKyrandiaGame(p.path, p.gameId)) {
             printf("Cabal: Kyrandia game completed.\n");
             return 0;
         }
         printf("Cabal: Kyrandia launch failed.\n");
+        break;
     }
 
     // Try to launch a GOB (Gobliins) game if found on SD card
