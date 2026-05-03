@@ -16,6 +16,10 @@ set(CPU_SPEED "252" CACHE STRING "CPU clock in MHz: 252, 378, 504")
 # PSRAM speed configuration (84, 100, 133, 166 MHz target)
 set(PSRAM_SPEED "133" CACHE STRING "PSRAM max frequency in MHz: 84, 100, 133, 166")
 
+# Flash speed cap (MHz). Used by set_flash_timings() in main.c to pick the
+# QMI divisor so flash stays at or below this frequency regardless of CPU.
+set(FLASH_SPEED "66" CACHE STRING "Flash max frequency in MHz")
+
 # CPU voltage selection based on speed
 if(CPU_SPEED GREATER_EQUAL 504)
     set(CPU_VOLTAGE "VREG_VOLTAGE_1_65")
@@ -29,6 +33,7 @@ message(STATUS "Cabal Build Configuration:")
 message(STATUS "  Board: ${BOARD_VARIANT}")
 message(STATUS "  CPU: ${CPU_SPEED} MHz")
 message(STATUS "  PSRAM: ${PSRAM_SPEED} MHz")
+message(STATUS "  Flash: ${FLASH_SPEED} MHz")
 message(STATUS "  Voltage: ${CPU_VOLTAGE}")
 message(STATUS "  USB HID: ${USB_HID_ENABLED}")
 
@@ -746,6 +751,7 @@ target_compile_definitions(frank-cabal PRIVATE
     CPU_CLOCK_MHZ=${CPU_SPEED}
     CPU_VOLTAGE=${CPU_VOLTAGE}
     PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
+    FLASH_MAX_FREQ_MHZ=${FLASH_SPEED}
     CABAL_PSRAM_SIZE_BYTES=8388608
     CABAL_VERSION="${CABAL_VERSION}"
 

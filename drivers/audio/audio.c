@@ -448,6 +448,23 @@ bool cabal_audio_is_initialized(void) {
     return audio_initialized;
 }
 
+// Refill a DMA buffer with freshly mixed audio. Called from the DMA IRQ
+// so refills happen exactly at buffer boundaries and do not depend on
+// the main loop making the refill deadline — that was the source of the
+// "slow + clipping" audio: when scummLoop() spent >23 ms on a frame the
+// old polling path would let DMA replay a silence-filled buffer,
+// effectively skipping samples in the music stream.
+static inline void audio_dma_refill(uint32_t *buf, int ch) {
+    size_t byte_count = dma_transfer_count * sizeof(uint32_t);
+    memset(mixed_buffer, 0, byte_count);
+    if (g_mixer_callback) {
+        g_mixer_callback((uint8_t *)mixed_buffer, (int)byte_count);
+    }
+    memcpy(buf, mixed_buffer, byte_count);
+    dma_channel_set_read_addr(ch, buf, false);
+    dma_channel_set_trans_count(ch, dma_transfer_count, false);
+}
+
 static void audio_dma_irq_handler(void) {
     uint32_t ints = dma_hw->ints1;
     uint32_t mask = 0;
@@ -457,29 +474,46 @@ static void audio_dma_irq_handler(void) {
     ints &= mask;
     if (!ints) return;
 
+    // While the startup-mute period is active the main loop is expected
+    // to feed silence explicitly; fall back to the polling path.
+    const bool feed_from_irq =
+        audio_initialized && audio_enabled &&
+        startup_frame_counter >= STARTUP_MUTE_FRAMES;
+
     if ((dma_channel_a >= 0) && (ints & (1u << dma_channel_a))) {
         dma_hw->ints1 = (1u << dma_channel_a);
-        // Clear buffer to silence to prevent stale audio looping during heavy loading
-        memset(dma_buffers[0], 0, dma_transfer_count * sizeof(uint32_t));
-        dma_channel_set_read_addr(dma_channel_a, dma_buffers[0], false);
-        dma_channel_set_trans_count(dma_channel_a, dma_transfer_count, false);
-        dma_buffers_free_mask |= 1u;
+        if (feed_from_irq) {
+            audio_dma_refill(dma_buffers[0], dma_channel_a);
+        } else {
+            memset(dma_buffers[0], 0, dma_transfer_count * sizeof(uint32_t));
+            dma_channel_set_read_addr(dma_channel_a, dma_buffers[0], false);
+            dma_channel_set_trans_count(dma_channel_a, dma_transfer_count, false);
+            dma_buffers_free_mask |= 1u;
+        }
     }
 
     if ((dma_channel_b >= 0) && (ints & (1u << dma_channel_b))) {
         dma_hw->ints1 = (1u << dma_channel_b);
-        memset(dma_buffers[1], 0, dma_transfer_count * sizeof(uint32_t));
-        dma_channel_set_read_addr(dma_channel_b, dma_buffers[1], false);
-        dma_channel_set_trans_count(dma_channel_b, dma_transfer_count, false);
-        dma_buffers_free_mask |= 2u;
+        if (feed_from_irq) {
+            audio_dma_refill(dma_buffers[1], dma_channel_b);
+        } else {
+            memset(dma_buffers[1], 0, dma_transfer_count * sizeof(uint32_t));
+            dma_channel_set_read_addr(dma_channel_b, dma_buffers[1], false);
+            dma_channel_set_trans_count(dma_channel_b, dma_transfer_count, false);
+            dma_buffers_free_mask |= 2u;
+        }
     }
 
     if ((dma_channel_c >= 0) && (ints & (1u << dma_channel_c))) {
         dma_hw->ints1 = (1u << dma_channel_c);
-        memset(dma_buffers[2], 0, dma_transfer_count * sizeof(uint32_t));
-        dma_channel_set_read_addr(dma_channel_c, dma_buffers[2], false);
-        dma_channel_set_trans_count(dma_channel_c, dma_transfer_count, false);
-        dma_buffers_free_mask |= 4u;
+        if (feed_from_irq) {
+            audio_dma_refill(dma_buffers[2], dma_channel_c);
+        } else {
+            memset(dma_buffers[2], 0, dma_transfer_count * sizeof(uint32_t));
+            dma_channel_set_read_addr(dma_channel_c, dma_buffers[2], false);
+            dma_channel_set_trans_count(dma_channel_c, dma_transfer_count, false);
+            dma_buffers_free_mask |= 4u;
+        }
     }
 }
 

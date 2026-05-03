@@ -784,23 +784,43 @@ struct ScummGameInfo {
     uint32_t midi;                 // MDT_* bitmask, 0 for defaults
 };
 
+// MIDI bitmask shorthands mirror values from engines/scumm/detection_tables.h.
+// MDT_* are defined in audio/mididrv.h; reproduced here so we don't need to
+// include that header in this translation unit.
+#define CABAL_MDT_PCSPK       (1 << 0)
+#define CABAL_MDT_CMS         (1 << 1)
+#define CABAL_MDT_PCJR        (1 << 2)
+#define CABAL_MDT_ADLIB       (1 << 3)
+#define CABAL_MDT_MIDI        (1 << 9)
+#define CABAL_MDT_PREFER_MT32 (1 << 10)
+#define CABAL_MDT_PREFER_GM   (1 << 11)
+
+#define CABAL_MIDI_MI1_VGA  (CABAL_MDT_PCSPK | CABAL_MDT_PCJR | CABAL_MDT_CMS | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
+#define CABAL_MIDI_MI1_EGA  (CABAL_MDT_PCSPK | CABAL_MDT_PCJR | CABAL_MDT_CMS | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
+#define CABAL_MIDI_MI1_CD   (CABAL_MDT_ADLIB)
+#define CABAL_MIDI_MI2      (CABAL_MDT_PCSPK | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
+#define CABAL_MIDI_INDY4    (CABAL_MDT_PCSPK | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
+#define CABAL_MIDI_LOOM     (CABAL_MDT_PCSPK | CABAL_MDT_PCJR | CABAL_MDT_CMS | CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_MT32)
+#define CABAL_MIDI_DOTT     (CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_GM)
+#define CABAL_MIDI_SAMNMAX  (CABAL_MDT_ADLIB | CABAL_MDT_MIDI | CABAL_MDT_PREFER_GM)
+
 static const ScummGameInfo kScummGames[] = {
     // --- SCUMM v4 (floppy, .LFL + DISK*.LEC) ---
-    {"mi1",      "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_VGA, 4, "VGA", 0},
-    {"mi1ega",   "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_EGA, 4, "EGA", 0},
-    {"loom",     "loom",    "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_LOOM,       4, "VGA", 0},
+    {"mi1",      "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_VGA, 4, "VGA", CABAL_MIDI_MI1_VGA},
+    {"mi1ega",   "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_EGA, 4, "EGA", CABAL_MIDI_MI1_EGA},
+    {"loom",     "loom",    "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_LOOM,       4, "VGA", CABAL_MIDI_LOOM},
     // --- SCUMM v5 (monkey.000 / monkey2.000 / atlantis.000) ---
-    {"mi1cd",    "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  0},
-    {"monkey",   "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  0},
-    {"mi2",      "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    0},
-    {"monkey2",  "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    0},
-    {"atlantis", "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    0},
-    {"indy4",    "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    0},
+    {"mi1cd",    "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD},
+    {"monkey",   "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  CABAL_MIDI_MI1_CD},
+    {"mi2",      "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2},
+    {"monkey2",  "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    CABAL_MIDI_MI2},
+    {"atlantis", "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4},
+    {"indy4",    "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    CABAL_MIDI_INDY4},
     // --- SCUMM v6 (tentacle.000 / samnmax.000) ---
-    {"dott",     "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    0},
-    {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    0},
-    {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    0},
-    {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    0},
+    {"dott",     "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT},
+    {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    CABAL_MIDI_DOTT},
+    {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX},
+    {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    CABAL_MIDI_SAMNMAX},
 };
 
 static const ScummGameInfo *findScummGame(const char *gamePath) {

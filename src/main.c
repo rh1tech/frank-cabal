@@ -54,9 +54,11 @@ void cabal_swap_buffers(void) {
     graphics_set_buffer(current_framebuffer);
 }
 
-// Flash timing configuration for overclocking
-// Flash max safe frequency without additional wait states
-#define FLASH_MAX_FREQ_MHZ 88
+// Flash timing configuration for overclocking. Override from CMake via
+// -DFLASH_SPEED=<mhz>; default here is conservative if not set.
+#ifndef FLASH_MAX_FREQ_MHZ
+#define FLASH_MAX_FREQ_MHZ 66
+#endif
 
 #if CPU_CLOCK_MHZ > 252
 #include "hardware/structs/qmi.h"
