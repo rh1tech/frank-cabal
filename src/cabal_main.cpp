@@ -902,10 +902,29 @@ static bool launchScummGame(const char *gamePath) {
         return false;
     }
 
+    // The CD/talkie release of Sam & Max ships `samnmax.sm0/.sm1` instead of
+    // the floppy-style `samnmax.000/.001` naming. Probe for the primary file
+    // with the table-default pattern and fall back to the `sm%d` variant if
+    // it is missing.
+    const char *pattern = info->pattern;
+    {
+        char probe[64];
+        snprintf(probe, sizeof(probe), "%s/", gamePath);
+        int baseLen = (int)strlen(probe);
+        snprintf(probe + baseLen, sizeof(probe) - baseLen, pattern, 0);
+        if (!cabal_path_exists(probe) && info->id == Scumm::GID_SAMNMAX) {
+            snprintf(probe + baseLen, sizeof(probe) - baseLen, "samnmax.sm%d", 0);
+            if (cabal_path_exists(probe)) {
+                printf("SCUMM: samnmax.000 not found; using samnmax.sm%%d (CD talkie layout)\n");
+                pattern = "samnmax.sm%d";
+            }
+        }
+    }
+
     // Build a minimal DetectorResult matching detection_tables.h entries.
     Scumm::DetectorResult dr;
     memset(&dr, 0, sizeof(dr));
-    dr.fp.pattern = info->pattern;
+    dr.fp.pattern = pattern;
     dr.fp.genMethod = info->genMethod;
     dr.game.gameid = info->gameid;
     dr.game.variant = 0;

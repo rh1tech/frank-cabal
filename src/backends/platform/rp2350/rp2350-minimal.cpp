@@ -75,6 +75,11 @@ extern "C" void hard_fault_handler_c(uint32_t *stack) {
 // Internal State
 //============================================================================
 
+// SCUMM v6 (Sam & Max / DOTT) ships cursors up to ~80x80; cap at 80
+// to keep the static buffer bounded while accommodating every cursor
+// actually used by the supported engine set.
+#define CABAL_MAX_CURSOR_DIM 80
+
 static struct {
     // Graphics
     CabalSurface screen;
@@ -230,7 +235,8 @@ static void draw_cursor(void) {
     // Validate cursor dimensions to prevent buffer overflows
     int cursorW = g_state.cursorW;
     int cursorH = g_state.cursorH;
-    if (cursorW <= 0 || cursorW > 32 || cursorH <= 0 || cursorH > 32) return;
+    if (cursorW <= 0 || cursorW > CABAL_MAX_CURSOR_DIM ||
+        cursorH <= 0 || cursorH > CABAL_MAX_CURSOR_DIM) return;
 
     // Calculate vertical offset for letterboxing (320x200 in 320x240)
     int yOffset = (240 - g_state.screenHeight) / 2;
@@ -372,25 +378,32 @@ void cabal_set_mouse_pos(int x, int y) {
     g_state.cursorY = y;
 }
 
-// Static cursor buffer to avoid repeated allocations
-// Max cursor size is typically 32x32 = 1024 bytes
-static uint8_t s_cursorBuffer[32 * 32];
+// Static cursor buffer to avoid repeated allocations; sized for the
+// largest cursor any supported engine uses (see CABAL_MAX_CURSOR_DIM
+// at the top of this file).
+static uint8_t s_cursorBuffer[CABAL_MAX_CURSOR_DIM * CABAL_MAX_CURSOR_DIM];
 
 void cabal_set_mouse_cursor(const uint8_t *data, int w, int h,
                             int hotX, int hotY, uint8_t keycolor) {
-    // Clamp to max supported cursor size
-    if (w > 32) w = 32;
-    if (h > 32) h = 32;
+    const int srcW = w;
+    const int srcH = h;
+    const int dstW = (w > CABAL_MAX_CURSOR_DIM) ? CABAL_MAX_CURSOR_DIM : w;
+    const int dstH = (h > CABAL_MAX_CURSOR_DIM) ? CABAL_MAX_CURSOR_DIM : h;
 
-    g_state.cursorW = w;
-    g_state.cursorH = h;
+    g_state.cursorW = dstW;
+    g_state.cursorH = dstH;
     g_state.cursorHotX = hotX;
     g_state.cursorHotY = hotY;
     g_state.cursorKeyColor = keycolor;
 
-    // Use static buffer instead of allocating each time
+    // Use static buffer instead of allocating each time. Respect the
+    // source stride when truncating so we don't smear pixels from row
+    // N+1 into the end of row N.
     g_state.cursorData = s_cursorBuffer;
-    memcpy(g_state.cursorData, data, w * h);
+    for (int y = 0; y < dstH; y++) {
+        memcpy(g_state.cursorData + y * dstW, data + y * srcW, dstW);
+    }
+    (void)srcH;
 }
 
 //============================================================================
