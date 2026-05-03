@@ -28,9 +28,12 @@
 // SCI Engine includes
 #include "sci/sci.h"
 
-// SCUMM Engine includes (temporarily disabled along with Full Throttle)
-// #include "scumm/scumm_v7.h"
-// #include "scumm/detection.h"
+// SCUMM Engine includes (v1-v6 only — v7/v8 disabled, Full Throttle/Dig/COMI not built)
+#include "scumm/scumm.h"
+#include "scumm/scumm_v4.h"
+#include "scumm/scumm_v5.h"
+#include "scumm/scumm_v6.h"
+#include "scumm/detection.h"
 
 // Forward declare AGIGameDescription since it's defined in detection.cpp
 namespace Agi {
@@ -767,9 +770,184 @@ static bool launchSciGame(const char *gamePath, const char *gameIdStr) {
     return (err.getCode() == Common::kNoError);
 }
 
+// LucasArts SCUMM v1-v6 game launcher. Covers MI1/MI2/DOTT/Sam&Max/
+// FOA/LOOM and other classic v1-v6 titles. SCUMM v7/v8 (Full Throttle /
+// The Dig / COMI / MI3+MI4) isn't built in this configuration.
+struct ScummGameInfo {
+    const char *dirName;           // matched against the trailing path component
+    const char *gameid;            // ScummVM internal game id
+    const char *pattern;           // filename pattern for resource files
+    Scumm::FilenameGenMethod genMethod;
+    Scumm::ScummGameId id;
+    uint8_t version;               // 4 or 5 or 6
+    const char *extra;             // "", "CD", "VGA", "Floppy", etc.
+    uint32_t midi;                 // MDT_* bitmask, 0 for defaults
+};
+
+static const ScummGameInfo kScummGames[] = {
+    // --- SCUMM v4 (floppy, .LFL + DISK*.LEC) ---
+    {"mi1",      "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_VGA, 4, "VGA", 0},
+    {"mi1ega",   "monkey",  "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_MONKEY_EGA, 4, "EGA", 0},
+    {"loom",     "loom",    "%03d.LFL",      Scumm::kGenRoomNum, Scumm::GID_LOOM,       4, "VGA", 0},
+    // --- SCUMM v5 (monkey.000 / monkey2.000 / atlantis.000) ---
+    {"mi1cd",    "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  0},
+    {"monkey",   "monkey",  "monkey.%03d",   Scumm::kGenDiskNum, Scumm::GID_MONKEY,     5, "CD",  0},
+    {"mi2",      "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    0},
+    {"monkey2",  "monkey2", "monkey2.%03d",  Scumm::kGenDiskNum, Scumm::GID_MONKEY2,    5, "",    0},
+    {"atlantis", "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    0},
+    {"indy4",    "atlantis","atlantis.%03d", Scumm::kGenDiskNum, Scumm::GID_INDY4,      5, "",    0},
+    // --- SCUMM v6 (tentacle.000 / samnmax.000) ---
+    {"dott",     "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    0},
+    {"tentacle", "tentacle","tentacle.%03d", Scumm::kGenDiskNum, Scumm::GID_TENTACLE,   6, "",    0},
+    {"samnmax",  "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    0},
+    {"sam",      "samnmax", "samnmax.%03d",  Scumm::kGenDiskNum, Scumm::GID_SAMNMAX,    6, "",    0},
+};
+
+static const ScummGameInfo *findScummGame(const char *gamePath) {
+    const char *slash = strrchr(gamePath, '/');
+    const char *name = slash ? slash + 1 : gamePath;
+    for (const auto &g : kScummGames) {
+        if (strcmp(name, g.dirName) == 0) return &g;
+    }
+    return nullptr;
+}
+
+static bool launchScummGame(const char *gamePath) {
+    const ScummGameInfo *info = findScummGame(gamePath);
+    if (!info) {
+        printf("SCUMM: %s not recognized as a SCUMM v1-v6 game directory\n", gamePath);
+        return false;
+    }
+
+    printf("SCUMM: Launching %s (v%d, id=%s) from %s\n",
+           info->gameid, info->version, info->gameid, gamePath);
+
+    ConfMan.set("path", gamePath);
+    ConfMan.setActiveDomain("cabal-scumm");
+
+    ConfMan.setInt("music_volume", 192);
+    ConfMan.setInt("sfx_volume", 192);
+    ConfMan.setInt("speech_volume", 192);
+    ConfMan.setBool("mute", false);
+    ConfMan.setBool("speech_mute", false);
+    ConfMan.setBool("sfx_mute", false);
+    ConfMan.setBool("music_mute", false);
+    ConfMan.setInt("autosave_period", 0);
+    ConfMan.setBool("enable_unsupported_game_warning", false);
+    ConfMan.set("music_driver", "adlib");
+    ConfMan.set("gm_device", "null");
+    ConfMan.set("mt32_device", "null");
+    ConfMan.setBool("native_mt32", false);
+    ConfMan.setBool("enable_gs", false);
+    ConfMan.setBool("multi_midi", false);
+    ConfMan.setInt("midi_gain", 100);
+    ConfMan.setBool("subtitles", true);
+    ConfMan.setInt("talkspeed", 60);
+    ConfMan.set("language", "en");
+    ConfMan.set("gfx_mode", "normal");
+    ConfMan.setBool("aspect_ratio", false);
+
+    // SCUMM-specific knobs
+    ConfMan.set("gameid", info->gameid);
+    ConfMan.set("original_gui", "false");
+    ConfMan.setBool("dump_scripts", false);
+    ConfMan.setBool("copy_protection", false);
+    ConfMan.setBool("demo_mode", false);
+    ConfMan.setBool("nosubtitles", false);
+    ConfMan.setBool("confirm_exit", false);
+    ConfMan.setBool("object_labels", true);
+    ConfMan.setBool("filtering", false);
+    ConfMan.setBool("fullscreen", false);
+    ConfMan.setInt("boot_param", 0);
+    ConfMan.setInt("save_slot", -1);
+    ConfMan.setInt("dimuse_tempo", 10);
+    ConfMan.setInt("tempo", 0);
+    ConfMan.set("render_mode", "");
+    ConfMan.set("easter_egg", "");
+
+    printf("SCUMM: Loading plugins...\n");
+    PluginManager::instance().loadAllPlugins();
+
+    Common::FSNode gameDir(gamePath);
+    if (gameDir.exists() && gameDir.isDirectory()) {
+        SearchMan.addDirectory(gamePath, gameDir, 0, 4);
+        printf("SCUMM: Added %s to search path\n", gamePath);
+    } else {
+        printf("SCUMM: WARNING - %s not accessible\n", gamePath);
+        return false;
+    }
+
+    // Build a minimal DetectorResult matching detection_tables.h entries.
+    Scumm::DetectorResult dr;
+    memset(&dr, 0, sizeof(dr));
+    dr.fp.pattern = info->pattern;
+    dr.fp.genMethod = info->genMethod;
+    dr.game.gameid = info->gameid;
+    dr.game.variant = 0;
+    dr.game.preferredTag = 0;
+    dr.game.id = info->id;
+    dr.game.version = info->version;
+    dr.game.heversion = 0;
+    dr.game.midi = info->midi;
+    dr.game.features = 0;
+    dr.game.platform = Common::kPlatformDOS;
+    dr.game.guioptions = "";
+    dr.language = Common::EN_ANY;
+    dr.extra = info->extra;
+
+    ::Engine *engine = nullptr;
+    switch (info->version) {
+    case 4:
+        printf("SCUMM: Creating v4 engine...\n");
+        engine = new Scumm::ScummEngine_v4(g_system, dr);
+        break;
+    case 5:
+        printf("SCUMM: Creating v5 engine...\n");
+        engine = new Scumm::ScummEngine_v5(g_system, dr);
+        break;
+    case 6:
+        printf("SCUMM: Creating v6 engine...\n");
+        engine = new Scumm::ScummEngine_v6(g_system, dr);
+        break;
+    default:
+        printf("SCUMM: unsupported version %d\n", info->version);
+        return false;
+    }
+
+    printf("SCUMM: Running game...\n");
+    Common::Error err = engine->run();
+    printf("SCUMM: Game finished with code %d (%s)\n",
+           err.getCode(), err.getDesc().c_str());
+    delete engine;
+    return (err.getCode() == Common::kNoError);
+}
+
 // Main game loop - called from main.c
 extern "C" int cabal_main(void) {
     printf("Cabal: Starting with OSystem backend...\n");
+
+    // Try to launch a LucasArts SCUMM game (v1-v6)
+    static const char *const scummDirs[] = {
+        "/cabal/mi1", "/cabal/mi1ega", "/cabal/mi1cd", "/cabal/monkey",
+        "/cabal/mi2", "/cabal/monkey2",
+        "/cabal/dott", "/cabal/tentacle",
+        "/cabal/samnmax", "/cabal/sam",
+        "/cabal/atlantis", "/cabal/indy4",
+        "/cabal/loom",
+        nullptr,
+    };
+    for (int i = 0; scummDirs[i]; i++) {
+        if (cabal_path_exists(scummDirs[i])) {
+            printf("Cabal: Found SCUMM directory at %s, launching...\n", scummDirs[i]);
+            if (launchScummGame(scummDirs[i])) {
+                printf("Cabal: SCUMM game completed.\n");
+                return 0;
+            }
+            printf("Cabal: SCUMM launch from %s failed, trying next engine.\n",
+                   scummDirs[i]);
+            break;
+        }
+    }
 
     // Try to launch a Sierra SCI game
     static const char *const sciDirs[] = {

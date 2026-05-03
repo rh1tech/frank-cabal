@@ -580,7 +580,7 @@ set(SCUMM_ENGINE_SOURCES
     src/engines/scumm/help.cpp
     src/engines/scumm/input.cpp
     src/engines/scumm/midiparser_ro.cpp
-    src/engines/scumm/nut_renderer.cpp
+    # nut_renderer.cpp — v7/v8 SMUSH font renderer
     src/engines/scumm/object.cpp
     src/engines/scumm/palette.cpp
     src/engines/scumm/resource.cpp
@@ -722,8 +722,8 @@ add_executable(frank-cabal
     ${GOB_ENGINE_SOURCES}
     ${KYRA_ENGINE_SOURCES}
     ${SCI_ENGINE_SOURCES}
-    # ${SCUMM_ENGINE_SOURCES}   # Full Throttle / SCUMM temporarily disabled
-    # ${SCUMM_7_8_SOURCES}      # Full Throttle / SCUMM temporarily disabled
+    ${SCUMM_ENGINE_SOURCES}
+    # ${SCUMM_7_8_SOURCES}  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) — disabled
     ${BACKEND_SOURCES}
 )
 
@@ -764,8 +764,8 @@ target_compile_definitions(frank-cabal PRIVATE
     ENABLE_GOB=1          # Gobliins games
     ENABLE_SCI=1          # Sierra SCI0/SCI1/SCI1.1 games (no SCI32)
     ENABLE_KYRA=1         # Legend of Kyrandia games
-    # ENABLE_SCUMM=1      # LucasArts SCUMM games (temporarily disabled)
-    # ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) (temporarily disabled)
+    ENABLE_SCUMM=1        # LucasArts SCUMM v0-v6 (MI1/MI2/DOTT/Sam&Max/FOA/LOOM/etc)
+    # ENABLE_SCUMM_7_8=1  # SCUMM v7/v8 (Full Throttle, The Dig, COMI) — disabled
 
     # Memory optimization flags
     CABAL_LOW_MEMORY=1

@@ -586,6 +586,17 @@ int IMuseInternal::getMusicTimer() {
 				best_time = timer;
 		}
 	}
+	// Fallback for embedded / silent builds: if no iMuse player is
+	// generating a timer (MIDI resource didn't load, mixer muted, etc.),
+	// synthesize a wall-clock-based value so scripts polling
+	// VAR_MUSIC_TIMER while waiting on intro cutscenes don't stall
+	// forever. Ticks at ~16 Hz.
+	if (best_time == 0) {
+		static uint32 fakeStart = 0;
+		uint32 now = g_system->getMillis();
+		if (fakeStart == 0) fakeStart = now;
+		best_time = (int)((now - fakeStart) / 60);
+	}
 	return best_time;
 }
 
